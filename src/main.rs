@@ -39,6 +39,9 @@ enum Commands {
     #[command(visible_alias = "aln")]
     Align(cmd::align::AlignArgs),
 
+    /// Extract gene regions from target sequences using homology search
+    Extract(cmd::extract::ExtractArgs),
+
     // Cluster(cmd::cluster::ClusterArgs), // WIP: metagenomics use case, deprioritized
 }
 
@@ -54,6 +57,7 @@ fn main() {
         Commands::Coverage(args) => cmd::coverage::run(args),
         Commands::Convert(args) => cmd::convert::run(args),
         Commands::Align(args) => cmd::align::run(args),
+        Commands::Extract(args) => cmd::extract::run(args),
         // Commands::Cluster(args) => cmd::cluster::run(args), // WIP: deprioritized
     }
 }
