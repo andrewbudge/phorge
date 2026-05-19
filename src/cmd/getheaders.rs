@@ -5,8 +5,8 @@ use std::io::{BufRead, BufReader};
 
 #[derive(Args)]
 pub struct GetheadersArgs {
-    /// input fasta file, read from stdin if no file is provided
-    pub input: Option<String>,
+    /// input FASTA files — accepts multiple files or globs; reads stdin if none given
+    pub input: Vec<String>,
 
     /// print only unique headers
     #[arg(short, long)]
@@ -14,24 +14,27 @@ pub struct GetheadersArgs {
 }
 
 pub fn run(args: GetheadersArgs) {
-    // create a reader from file or stdin
-    let reader: Box<dyn BufRead> = match args.input {
-        Some(filename) => {
-            let file = File::open(&filename).expect("Unable to open file");
-            Box::new(BufReader::new(file))
-        }
-        None => Box::new(BufReader::new(std::io::stdin().lock())),
-    };
-
-    // track seen headers for unique mode
     let mut seen = HashSet::new();
 
-    // read the file and print only the lines that start with ">" (the seq ids)
+    if args.input.is_empty() {
+        process_reader(BufReader::new(std::io::stdin().lock()), args.unique, &mut seen);
+    } else {
+        for filename in &args.input {
+            let file = File::open(filename).unwrap_or_else(|e| {
+                eprintln!("Error: could not open '{}': {}", filename, e);
+                std::process::exit(1);
+            });
+            process_reader(BufReader::new(file), args.unique, &mut seen);
+        }
+    }
+}
+
+fn process_reader(reader: impl BufRead, unique: bool, seen: &mut HashSet<String>) {
     for line in reader.lines() {
         let line = line.expect("Could not read line");
         if line.starts_with('>') {
             let header = &line[1..];
-            if args.unique {
+            if unique {
                 if seen.insert(header.to_string()) {
                     println!("{}", header);
                 }

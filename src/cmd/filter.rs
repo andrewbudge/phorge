@@ -38,12 +38,7 @@ pub fn run(args: FilterArgs) {
                 continue;
             }
             let taxon = fields[0].to_string();
-            let count: usize = fields[1]
-                .split('/')
-                .next()
-                .unwrap_or("0")
-                .parse()
-                .unwrap_or(0);
+            let count: usize = fields[1..].iter().filter(|&&f| f != "MISSING").count();
             counts.insert(taxon, count);
         }
         counts

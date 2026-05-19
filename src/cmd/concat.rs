@@ -2,7 +2,7 @@ use clap::Args;
 use cladekit::{load_taxa_list, parse_fasta};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 
 #[derive(Args)]
@@ -11,7 +11,7 @@ pub struct ConcatArgs {
     pub files: Vec<String>,
 
     /// Alias list for smart matching — output names that map to messy input headers
-    #[arg(short, long, requires = "log")]
+    #[arg(short, long)]
     pub alias: Option<String>,
 
     /// Output format (FASTA or Nexus)
@@ -85,6 +85,29 @@ fn detect_data_type(sequence: &str) -> DataType {
 }
 
 pub fn run(args: ConcatArgs) {
+    // Validate the alias file early, before touching gene files
+    if let Some(ref taxa_file) = args.alias {
+        let alias_path = Path::new(taxa_file);
+        if alias_path.is_dir() {
+            eprintln!(
+                "Error: '{}' is a directory. -a/--alias expects a plain text file with one taxon name per line.",
+                taxa_file
+            );
+            std::process::exit(1);
+        }
+        if let Ok(f) = File::open(alias_path) {
+            let mut first_line = String::new();
+            BufReader::new(f).read_line(&mut first_line).ok();
+            if first_line.trim_start().starts_with('>') {
+                eprintln!(
+                    "Error: '{}' looks like a FASTA file. -a/--alias expects a plain text taxa list (one name per line, no '>' headers).",
+                    taxa_file
+                );
+                std::process::exit(1);
+            }
+        }
+    }
+
     // Parse all gene files
     let mut gene_data = Vec::new();
     for file in &args.files {
@@ -127,7 +150,14 @@ pub fn run(args: ConcatArgs) {
         }
     }
 
-    // Dry run: show matching summary and exit
+    // Non-dry-run smart matching requires a log file to capture provenance
+    if smart_matching && !args.dry_run && args.log.is_none() {
+        eprintln!("Error: -a/--alias requires -l/--log to write the provenance TSV.");
+        eprintln!("  To preview matching without writing output, use --dry-run.");
+        std::process::exit(1);
+    }
+
+    // Dry run: show matching summary and output tentative provenance TSV, then exit
     if args.dry_run {
         eprintln!("=== Dry Run: Matching Summary ===\n");
 
@@ -164,6 +194,42 @@ pub fn run(args: ConcatArgs) {
         eprintln!("Taxa: {} total, {} with all genes, {} with some, {} with none",
             taxa.len(), full_coverage, any_coverage, no_coverage);
         eprintln!("Genes: {}", total_genes);
+
+        // Output tentative provenance TSV (only meaningful in smart matching mode)
+        if smart_matching {
+            let taxa_file = args.alias.as_ref().unwrap();
+            let gene_names: Vec<String> = matched_genes
+                .iter()
+                .map(|(file, _, _)| Path::new(file).file_name().unwrap().to_str().unwrap().to_string())
+                .collect();
+
+            let mut rows: Vec<String> = Vec::new();
+            rows.push(format!("{}\t{}", taxa_file, gene_names.join("\t")));
+            for taxon in &taxa {
+                let mut row = vec![taxon.clone()];
+                for (_file, matched, _length) in &matched_genes {
+                    if matched.contains_key(taxon) {
+                        row.push(matched[taxon].0.clone());
+                    } else {
+                        row.push("MISSING".to_string());
+                    }
+                }
+                rows.push(row.join("\t"));
+            }
+
+            if let Some(log_path) = &args.log {
+                let mut f = File::create(log_path).expect("Failed to create provenance log file");
+                for row in &rows {
+                    writeln!(f, "{}", row).unwrap();
+                }
+                eprintln!("\nTentative provenance log written to: {}", log_path);
+            } else {
+                eprintln!("\n=== Tentative Provenance TSV ===");
+                for row in &rows {
+                    println!("{}", row);
+                }
+            }
+        }
 
         return;
     }

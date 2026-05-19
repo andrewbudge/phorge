@@ -68,13 +68,14 @@ fn collect_targets(targets: &[String]) -> Vec<String> {
 }
 
 // Writes a pooled FASTA to disk with "organism::seq_id" headers.
-// Returns a lookup map from that key to the full sequence for extraction later.
-fn pool_targets(target_files: &[String], pooled_path: &Path) -> HashMap<String, String> {
+// Returns a lookup map from that key to (original_header, full_sequence, original_filename)
+fn pool_targets(target_files: &[String], pooled_path: &Path) -> HashMap<String, (String, String, String)> {
     let mut writer = File::create(pooled_path).expect("Could not create pooled targets file");
-    let mut lookup: HashMap<String, String> = HashMap::new();
+    let mut lookup: HashMap<String, (String, String, String)> = HashMap::new();
 
     for file in target_files {
         let path = Path::new(file);
+        let filename = path.file_name().unwrap().to_str().unwrap().to_string();
         let organism = path
             .file_stem()
             .unwrap()
@@ -92,7 +93,7 @@ fn pool_targets(target_files: &[String], pooled_path: &Path) -> HashMap<String, 
 
             writeln!(writer, ">{}", pooled_key).unwrap();
             writeln!(writer, "{}", seq).unwrap();
-            lookup.insert(pooled_key, seq.clone());
+            lookup.insert(pooled_key, (header.clone(), seq.clone(), filename.clone()));
         }
     }
 
@@ -207,8 +208,8 @@ pub fn run(args: ExtractArgs) {
     let mut gene_writers: HashMap<String, File> = HashMap::new();
 
     for hit in &hits {
-        let seq = match lookup.get(&hit.target) {
-            Some(s) => s,
+        let (original_header, seq, filename) = match lookup.get(&hit.target) {
+            Some(t) => t,
             None => {
                 eprintln!("Warning: '{}' not found in lookup, skipping.", hit.target);
                 continue;
@@ -223,15 +224,12 @@ pub fn run(args: ExtractArgs) {
         let end = (raw_end + args.flank).min(seq.len());
         let extracted = &seq[start..end];
 
-        // Organism name is everything before "::"
-        let organism = hit.target.split("::").next().unwrap_or(&hit.target);
-
         let writer = gene_writers.entry(hit.query.clone()).or_insert_with(|| {
             let out_path = Path::new(&args.output).join(format!("{}.fasta", hit.query));
             File::create(&out_path).expect("Could not create output file")
         });
 
-        writeln!(writer, ">{}", organism).unwrap();
+        writeln!(writer, ">{} [ref={} hit={} {}-{}]", original_header, hit.query, filename, start, end).unwrap();
         writeln!(writer, "{}", extracted).unwrap();
     }
 
