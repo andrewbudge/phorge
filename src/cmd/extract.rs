@@ -4,17 +4,30 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 use std::process::Command;
 
-use clap::Args;
+use clap::{ArgGroup, Args};
 
 use cladekit::parse_fasta;
 
 #[derive(Args)]
+// Exactly one reference form is required: a single multi-gene file, or one
+// file per gene. They are mutually exclusive.
+#[command(group(
+    ArgGroup::new("refsource")
+        .required(true)
+        .args(["reference", "refs"])
+))]
 pub struct ExtractArgs {
-    /// Reference FASTA with labeled gene sequences (e.g., >COI, >ND2)
+    /// Single reference FASTA with labeled gene records (gene name = each
+    /// record header, e.g. >COI, >ND2). For ad-hoc / standalone use.
     #[arg(short, long)]
-    pub reference: String,
+    pub reference: Option<String>,
 
-    /// Target organism FASTA files or a directory containing them
+    /// Per-gene reference FASTAs (gene name = filename stem, e.g. COI.fasta ->
+    /// COI). Each file may hold many sequences to cover divergence. Pipeline form.
+    #[arg(long, num_args = 1..)]
+    pub refs: Option<Vec<String>>,
+
+    /// Target FASTA files or a directory containing them (e.g. fetch's raw/ dir)
     #[arg(short, long, required = true, num_args = 1..)]
     pub targets: Vec<String>,
 
@@ -22,13 +35,14 @@ pub struct ExtractArgs {
     #[arg(short, long)]
     pub output: String,
 
+    /// Minimum MMseqs2 sequence identity for a hit to be kept (0.0–1.0).
+    /// This is the sole quality gate; pick references that cover your taxa.
+    #[arg(long, default_value_t = 0.7)]
+    pub min_identity: f64,
+
     /// Extra bases to grab on either side of each hit
     #[arg(long, default_value_t = 0)]
     pub flank: usize,
-
-    /// Minimum fraction of the reference gene that must be covered (0.0–1.0)
-    #[arg(long, default_value_t = 0.5)]
-    pub min_coverage: f64,
 
     /// MMseqs2 sensitivity (1.0=fast, 7.5=max). Higher finds more divergent hits.
     #[arg(short, long, default_value_t = 5.7)]
@@ -70,6 +84,44 @@ fn collect_targets(targets: &[String]) -> Vec<String> {
     files
 }
 
+// Writes a pooled reference FASTA whose record IDs encode the gene name as
+// `gene::N`, so MMseqs2 reports the gene in its `query` column. The gene name
+// comes from the record header (single --reference file) or the filename stem
+// (per-gene --refs files). Returns the number of reference records written.
+fn pool_references(args: &ExtractArgs, pooled_path: &Path) -> usize {
+    let mut writer = File::create(pooled_path).expect("Could not create pooled reference file");
+    let mut counter = 0usize;
+
+    if let Some(reference) = &args.reference {
+        let (seqs, _) = parse_fasta(reference, false).expect("Failed to read reference FASTA");
+        for (header, seq) in &seqs {
+            // gene = first whitespace-delimited token of the header
+            let gene = header.split_whitespace().next().unwrap_or(header);
+            writeln!(writer, ">{}::{}", gene, counter).unwrap();
+            writeln!(writer, "{}", seq).unwrap();
+            counter += 1;
+        }
+    } else if let Some(refs) = &args.refs {
+        for file in refs {
+            let path = Path::new(file);
+            let gene = path
+                .file_stem()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .replace(' ', "_");
+            let (seqs, _) = parse_fasta(file, false).expect("Failed to read reference FASTA");
+            for (_header, seq) in &seqs {
+                writeln!(writer, ">{}::{}", gene, counter).unwrap();
+                writeln!(writer, "{}", seq).unwrap();
+                counter += 1;
+            }
+        }
+    }
+
+    counter
+}
+
 // Writes a pooled FASTA to disk with "organism::seq_id" headers.
 // Returns a lookup map from that key to (original_header, full_sequence, original_filename)
 fn pool_targets(
@@ -107,15 +159,18 @@ fn pool_targets(
 }
 
 struct Hit {
-    query: String,
+    gene: String,
     target: String,
+    identity: f64,
     tstart: usize,
     tend: usize,
 }
 
-// Parses MMseqs2 tabular output. Filters hits by minimum query coverage.
-// Expected --format-output: query,target,tstart,tend,qstart,qend,qlen
-fn parse_hits(tsv_path: &Path, min_coverage: f64) -> Vec<Hit> {
+// Parses MMseqs2 tabular output. The identity gate is applied in-engine via
+// --min-seq-id, so every row here already passed; we just carry fident through
+// for traceability in the output header.
+// Expected --format-output: query,target,fident,tstart,tend
+fn parse_hits(tsv_path: &Path) -> Vec<Hit> {
     let file = File::open(tsv_path).expect("Could not open MMseqs2 output");
     let reader = BufReader::new(file);
     let mut hits = Vec::new();
@@ -123,23 +178,20 @@ fn parse_hits(tsv_path: &Path, min_coverage: f64) -> Vec<Hit> {
     for line in reader.lines() {
         let line = line.expect("Error reading MMseqs2 output");
         let f: Vec<&str> = line.split('\t').collect();
-        if f.len() < 7 {
+        if f.len() < 5 {
             continue;
         }
 
-        let qstart: usize = f[4].parse().unwrap_or(0);
-        let qend: usize = f[5].parse().unwrap_or(0);
-        let qlen: usize = f[6].parse().unwrap_or(1);
-        let coverage = (qend.saturating_sub(qstart) + 1) as f64 / qlen as f64;
+        // query is `gene::N`; recover the gene name before the separator.
+        let gene = f[0].split("::").next().unwrap_or(f[0]).to_string();
 
-        if coverage >= min_coverage {
-            hits.push(Hit {
-                query: f[0].to_string(),
-                target: f[1].to_string(),
-                tstart: f[2].parse().unwrap_or(1),
-                tend: f[3].parse().unwrap_or(1),
-            });
-        }
+        hits.push(Hit {
+            gene,
+            target: f[1].to_string(),
+            identity: f[2].parse().unwrap_or(0.0),
+            tstart: f[3].parse().unwrap_or(1),
+            tend: f[4].parse().unwrap_or(1),
+        });
     }
 
     hits
@@ -160,14 +212,20 @@ pub fn run(args: ExtractArgs) {
         std::process::exit(1);
     }
 
+    // Output dir holds the per-gene FASTAs and the mmseqs log; create it up front.
+    fs::create_dir_all(&args.output).expect("Could not create output directory");
+
     // Unique temp dir per process so parallel runs don't collide
     let tmp_dir = std::env::temp_dir().join(format!("cladekit_extract_{}", std::process::id()));
     fs::create_dir_all(&tmp_dir).expect("Could not create temp directory");
 
+    let pooled_ref_path = tmp_dir.join("pooled_reference.fasta");
     let pooled_path = tmp_dir.join("pooled_targets.fasta");
     let results_path = tmp_dir.join("results.tsv");
     let mmseqs_tmp = tmp_dir.join("mmseqs_tmp");
 
+    let n_refs = pool_references(&args, &pooled_ref_path);
+    eprintln!("Pooled {} reference sequence(s).", n_refs);
     eprintln!("Pooling {} target files...", target_files.len());
     let lookup = pool_targets(&target_files, &pooled_path);
 
@@ -177,11 +235,14 @@ pub fn run(args: ExtractArgs) {
         .try_clone()
         .expect("Could not clone log file handle");
 
-    eprintln!("Running MMseqs2 easy-search...");
+    eprintln!(
+        "Running MMseqs2 easy-search (min identity {})...",
+        args.min_identity
+    );
     let status = Command::new("mmseqs")
         .args([
             "easy-search",
-            &args.reference,
+            pooled_ref_path.to_str().unwrap(),
             pooled_path.to_str().unwrap(),
             results_path.to_str().unwrap(),
             mmseqs_tmp.to_str().unwrap(),
@@ -189,8 +250,10 @@ pub fn run(args: ExtractArgs) {
             "3", // nucleotide-vs-nucleotide
             "-s",
             &args.sensitivity.to_string(),
+            "--min-seq-id",
+            &args.min_identity.to_string(),
             "--format-output",
-            "query,target,tstart,tend,qstart,qend,qlen",
+            "query,target,fident,tstart,tend",
         ])
         .stdout(log_file)
         .stderr(log_file2)
@@ -206,9 +269,7 @@ pub fn run(args: ExtractArgs) {
     }
 
     eprintln!("Parsing results...");
-    let hits = parse_hits(&results_path, args.min_coverage);
-
-    fs::create_dir_all(&args.output).expect("Could not create output directory");
+    let hits = parse_hits(&results_path);
 
     // One output file per gene, opened lazily as we encounter each gene name
     let mut gene_writers: HashMap<String, File> = HashMap::new();
@@ -230,15 +291,15 @@ pub fn run(args: ExtractArgs) {
         let end = (raw_end + args.flank).min(seq.len());
         let extracted = &seq[start..end];
 
-        let writer = gene_writers.entry(hit.query.clone()).or_insert_with(|| {
-            let out_path = Path::new(&args.output).join(format!("{}.fasta", hit.query));
+        let writer = gene_writers.entry(hit.gene.clone()).or_insert_with(|| {
+            let out_path = Path::new(&args.output).join(format!("{}.fasta", hit.gene));
             File::create(&out_path).expect("Could not create output file")
         });
 
         writeln!(
             writer,
-            ">{} [ref={} hit={} {}-{}]",
-            original_header, hit.query, filename, start, end
+            ">{} [gene={} ident={:.3} src={} {}-{}]",
+            original_header, hit.gene, hit.identity, filename, start, end
         )
         .unwrap();
         writeln!(writer, "{}", extracted).unwrap();
