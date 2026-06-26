@@ -100,7 +100,7 @@ fn command_name(command: &Commands) -> &'static str {
 
 /// Two-layer tracing: a human-readable stderr layer (live narration) and, when
 /// the command has an output dir, an append-only JSON layer at
-/// `<out>/cladekit.log.jsonl`. The same events land in both — the JSON file is
+/// `<out>/phorge.log.jsonl`. The same events land in both — the JSON file is
 /// the durable, machine-readable log that spans every invocation against this
 /// output directory.
 fn init_tracing(command: &Commands) -> anyhow::Result<()> {
@@ -113,7 +113,7 @@ fn init_tracing(command: &Commands) -> anyhow::Result<()> {
         Some(dir) => {
             std::fs::create_dir_all(dir)
                 .with_context(|| format!("creating output directory {}", dir.display()))?;
-            let path = dir.join("cladekit.log.jsonl");
+            let path = dir.join("phorge.log.jsonl");
             let file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)

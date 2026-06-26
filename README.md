@@ -1,32 +1,28 @@
-<div align="left">
-  <img src="docs/mockup_logos/cladekit-slickrock-horizontal-dark.svg" width = "600">
-</div>
+Phorge is a lightweight, composable CLI phylogenetics toolkit. A single binary, Phorge provides many subcommands that replace common chains of bash commands or a collection of individual programs in phylogenetic pipelines. Examples include NCBI sequence acquisition, homology-based gene extraction, concatenation, and alignment quality control.
 
-Cladekit is a lightweight, composable CLI phylogenetics toolkit. A single binary, Cladekit provides many subcommands that replace common chains of bash commands or a collection of individual programs in phylogenetic pipelines. Examples include NCBI sequence acquisition, homology-based gene extraction, concatenation, and alignment quality control.
+Phorge has two layers in one binary: lean file tools (`getheaders`, `concat`, `stats`, `coverage`, `convert`, `filter`, `curate`, `align`) and an acquisition layer (`query`, `fetch`, `extract`, `clean`) that pulls and curates sequences from NCBI. A broken external tool or network never affects the self-contained subcommands.
 
-Cladekit has two layers in one binary: lean file tools (`getheaders`, `concat`, `stats`, `coverage`, `convert`, `filter`, `curate`, `align`) and an acquisition layer (`query`, `fetch`, `extract`, `clean`) that pulls and curates sequences from NCBI. A broken external tool or network never affects the self-contained subcommands.
-
-**Note:** Cladekit is under active development. Subcommands may change or be added as the project matures.
+**Note:** Phorge is under active development. Subcommands may change or be added as the project matures.
 
 ## Install
 
 Requires [Rust](https://www.rust-lang.org/tools/install).
 
 ```bash
-cargo install --git https://github.com/andrewbudge/cladekit
+cargo install --git https://github.com/andrewbudge/phorge
 ```
 
-This builds the binary and adds `cladekit` to your PATH.
+This builds the binary and adds `phorge` to your PATH.
 
 To update to the latest version:
 
 ```bash
-cargo install --force --git https://github.com/andrewbudge/cladekit
+cargo install --force --git https://github.com/andrewbudge/phorge
 ```
 
 ## External Dependencies
 
-Most cladekit subcommands are fully self-contained. The `extract` and `align` subcommands orchestrate external tools and require them to be in your PATH.
+Most phorge subcommands are fully self-contained. The `extract` and `align` subcommands orchestrate external tools and require them to be in your PATH.
 
 | Subcommand | Requires |
 |---|---|
@@ -37,7 +33,7 @@ If you don't have these installed, the easiest path is conda:
 
 ```bash
 conda env create -f environment.yml
-conda activate cladekit-tools
+conda activate phorge-tools
 ```
 
 Or install individually:
@@ -59,12 +55,12 @@ Extract headers from FASTA files.
 **Example:**
 
 ```bash
-$ cladekit getheaders testdata/test_good.fasta
+$ phorge getheaders testdata/test_good.fasta
 Cat
 Dog
 Cat
 
-$ cladekit getheaders -u testdata/test_good.fasta
+$ phorge getheaders -u testdata/test_good.fasta
 Cat
 Dog
 ```
@@ -83,7 +79,7 @@ Concat auto-detects DNA vs amino acid data per gene and adjusts missing characte
 **Exact match — clean headers:**
 
 ```bash
-$ cladekit concat gene1.fasta gene2.fasta > supermatrix.fasta
+$ phorge concat gene1.fasta gene2.fasta > supermatrix.fasta
 DNA, gene1.fasta = 1-4
 DNA, gene2.fasta = 5-8
 ```
@@ -96,7 +92,7 @@ Mus_musculus
 Rattus_rattus
 Xenopus_laevis
 
-$ cladekit concat -a alias.txt -l prov.tsv gene1.fasta gene2.fasta > supermatrix.fasta
+$ phorge concat -a alias.txt -l prov.tsv gene1.fasta gene2.fasta > supermatrix.fasta
 DNA, gene1.fasta = 1-4
 DNA, gene2.fasta = 5-8
 
@@ -118,7 +114,7 @@ Xenopus_laevis	MISSING	XM789.1 Xenopus laevis gene2 cds
 **NEXUS output:**
 
 ```bash
-$ cladekit concat -a alias.txt -l prov.tsv -f nexus gene1.fasta gene2.fasta
+$ phorge concat -a alias.txt -l prov.tsv -f nexus gene1.fasta gene2.fasta
 #NEXUS
 BEGIN DATA;
   DIMENSIONS NTAX=3 NCHAR=8;
@@ -162,7 +158,7 @@ Get basic alignment statistics from FASTA files. Accepts multiple files via glob
 **Example:**
 
 ```bash
-$ cladekit stats supermatrix.fasta proteins.fasta
+$ phorge stats supermatrix.fasta proteins.fasta
 file	sequences	length	type	gc_pct	missing_pct	variable	variable_pct	informative	informative_pct
 supermatrix.fasta	3	8	DNA	50.0	33.3	0	0.0	0	0.0
 proteins.fasta	4	20	AA	NA	0.0	3	15.0	2	10.0
@@ -179,12 +175,12 @@ Summarize taxa and loci coverage from a concat provenance TSV. Shows how many lo
 **Example:**
 
 ```bash
-$ cladekit coverage -t prov.tsv
+$ phorge coverage -t prov.tsv
 taxa	loci_present	loci_missing	pct_missing
 Mus_musculus	5/5	0/5	0.0%
 Smilodon_populator	2/5	3/5	60.0%
 
-$ cladekit coverage -l -p prov.tsv
+$ phorge coverage -l -p prov.tsv
 loci          appearance_count  missing_pct
 12S_aln.fas   6/8               25.0%
 COX1_aln.fas  6/8               25.0%
@@ -208,7 +204,7 @@ Convert between common sequence data file types. Auto-detects the input format f
 **Example:**
 
 ```bash
-$ cladekit convert -o n alignment.fasta
+$ phorge convert -o n alignment.fasta
 #NEXUS
 BEGIN DATA;
   DIMENSIONS NTAX=3 NCHAR=8;
@@ -220,7 +216,7 @@ BEGIN DATA;
 ;
 END;
 
-$ cladekit convert -o rp alignment.nex
+$ phorge convert -o rp alignment.nex
 3 8
 Taxon_A    ATCGATCG
 Taxon_B    ATCGATCG
@@ -239,7 +235,7 @@ Requires an internet connection and an email address (NCBI Terms of Service).
 **Example:**
 
 ```bash
-$ cladekit query --ingroup 89829 --outgroup 241031 309676 -o run/ --email you@example.org
+$ phorge query --ingroup 89829 --outgroup 241031 309676 -o run/ --email you@example.org
 querying nuccore for txid89829[Organism:exp]
 Leptophlebiidae (89829): 3437 records found; retrieving metadata...
 ...
@@ -260,7 +256,7 @@ query complete
 Download the sequences for a `query_results.json` manifest, writing raw NCBI FASTA shards to `<out>/raw/`. The download is resumable — a manifest tracks completed shards, so an interrupted run picks up where it left off. Headers are written verbatim; rewriting them is `clean`'s job.
 
 ```bash
-$ cladekit fetch -q run/query_results.json -o run/ --email you@example.org --yes
+$ phorge fetch -q run/query_results.json -o run/ --email you@example.org --yes
 preflight ready to download  records=3586  chunks=8  est_mb=2.4
 shard written  chunk=0  records=500
 ...
@@ -291,7 +287,7 @@ Requires [MMseqs2](https://github.com/soedinglab/MMseqs2) installed and in your 
 # refs/ has one file per gene: COI.fasta, 16S.fasta, 28S.fasta, ...
 # run/raw/ contains the FASTA shards written by fetch
 
-$ cladekit extract --refs refs/*.fasta -t run/raw/ -o run/genes/
+$ phorge extract --refs refs/*.fasta -t run/raw/ -o run/genes/
 Pooled 19 reference sequence(s).
 Pooling 8 target files...
 Parsing results...
@@ -318,14 +314,14 @@ Join `extract`'s per-gene output back to `query_results.json`, rewrite headers t
 Dedup keeps the longest sequence per TaxID, breaking ties by extract identity. Records whose accession isn't found in `query_results.json` are dropped and reported (broken provenance is useless to `concat`).
 
 ```bash
-$ cladekit clean --genes-dir run/genes/ -q run/query_results.json -o run/clean/
+$ phorge clean --genes-dir run/genes/ -q run/query_results.json -o run/clean/
 Done. Wrote 591 cleaned sequence(s) across 7 gene file(s); dropped 2478 duplicate(s).
 ```
 
 Use `--prefer` to favour particular records during dedup — for example your own museum vouchers — even when they aren't the longest. A record is preferred if the substring appears in its extract header or its GenBank title:
 
 ```bash
-$ cladekit clean --genes-dir run/genes/ -q run/query_results.json -o run/clean/ --prefer BYU
+$ phorge clean --genes-dir run/genes/ -q run/query_results.json -o run/clean/ --prefer BYU
 Done. Wrote 591 cleaned sequence(s) across 7 gene file(s); dropped 2478 duplicate(s).
   11 kept record(s) matched --prefer ["BYU"].
 ```
@@ -343,7 +339,7 @@ Batch align multiple FASTA files using MAFFT or MUSCLE. Runs the aligner on each
 **Example:**
 
 ```bash
-$ cladekit align -p mafft -i genes/*.fasta -e _aln -o aligned/
+$ phorge align -p mafft -i genes/*.fasta -e _aln -o aligned/
 Aligning COI...done
 Aligning ND2...done
 Aligning 12S...done
@@ -354,10 +350,10 @@ Pass custom flags to the aligner after `--` (replaces the default flag):
 
 ```bash
 # mafft — replace --auto
-$ cladekit align -p mafft -i genes/*.fasta -e _aln -o aligned/ -- --thread 4 --maxiterate 1000
+$ phorge align -p mafft -i genes/*.fasta -e _aln -o aligned/ -- --thread 4 --maxiterate 1000
 
 # muscle — replace -align with -super5 for large datasets
-$ cladekit align -p muscle -i genes/*.fasta -e _aln -o aligned/ -- -super5
+$ phorge align -p muscle -i genes/*.fasta -e _aln -o aligned/ -- -super5
 ```
 
 **Flags:**
@@ -375,22 +371,22 @@ Remove taxa from an alignment that exceed a missingness threshold, have too few 
 
 ```bash
 # drop taxa with more than 50% gaps in the supermatrix
-$ cladekit filter supermatrix.fasta --max-missing 0.5 > filtered.fasta
+$ phorge filter supermatrix.fasta --max-missing 0.5 > filtered.fasta
 Total taxa: 8
 Kept taxa: 6
 Dropped taxa: 2
 
 # drop taxa present in fewer than 3 loci (requires the provenance TSV from concat -l)
-$ cladekit filter supermatrix.fasta --min-loci 3 -l prov.tsv > filtered.fasta
+$ phorge filter supermatrix.fasta --min-loci 3 -l prov.tsv > filtered.fasta
 
 # both filters at once
-$ cladekit filter supermatrix.fasta --max-missing 0.5 --min-loci 3 -l prov.tsv > filtered.fasta
+$ phorge filter supermatrix.fasta --max-missing 0.5 --min-loci 3 -l prov.tsv > filtered.fasta
 ```
 
 **Flags:**
 - `-m, --max-missing` — maximum allowed missingness fraction per taxon (0.0–1.0)
 - `-n, --min-loci` — minimum number of loci a taxon must be present in
-- `-l, --log` — provenance TSV from `cladekit concat -l` (required with `--min-loci`)
+- `-l, --log` — provenance TSV from `phorge concat -l` (required with `--min-loci`)
 ---
 ### curate
 
@@ -402,20 +398,20 @@ Compose keep conditions with `-k` by combining letters: `p` = parsimony-informat
 
 ```bash
 # single file to stdout (smart-gap + parsimony filter by default)
-$ cladekit curate alignment.fasta > trimmed.fasta
+$ phorge curate alignment.fasta > trimmed.fasta
 Sites in:      10000
 Sites kept:    4321
 Sites removed: 5679
 
 # batch with glob, output to directory
-$ cladekit curate aligned/*.fasta -o curated/
+$ phorge curate aligned/*.fasta -o curated/
 COI: 8000 → 3201 sites (4799 removed)
 ND2: 6000 → 2874 sites (3126 removed)
 12S: 4000 → 1950 sites (2050 removed)
 Done. Curated 3 files.
 
 # fixed gap threshold instead of smart-gap
-$ cladekit curate aligned/*.fasta -k pg --gap-threshold 0.5 -o curated/
+$ phorge curate aligned/*.fasta -k pg --gap-threshold 0.5 -o curated/
 ```
 
 **Flags:**
@@ -446,15 +442,15 @@ From taxon IDs to a supermatrix. The acquisition layer (`query → fetch → ext
 
 ```bash
 # 1. Acquire — TaxIDs in, one curated FASTA per gene out
-cladekit query --ingroup 89829 --outgroup 241031 309676 -o run/ --email you@example.org
-cladekit fetch   -q run/query_results.json -o run/ --email you@example.org --yes
-cladekit extract --refs refs/*.fasta -t run/raw/ -o run/genes/
-cladekit clean   --genes-dir run/genes/ -q run/query_results.json -o run/clean/ --prefer BYU
+phorge query --ingroup 89829 --outgroup 241031 309676 -o run/ --email you@example.org
+phorge fetch   -q run/query_results.json -o run/ --email you@example.org --yes
+phorge extract --refs refs/*.fasta -t run/raw/ -o run/genes/
+phorge clean   --genes-dir run/genes/ -q run/query_results.json -o run/clean/ --prefer BYU
 
 # 2. Build — align, trim, and concatenate into a supermatrix
-cladekit align  -p mafft -i run/clean/*.fasta -e _aln -o run/aligned/
-cladekit curate run/aligned/*.fasta -o run/curated/
-cladekit concat run/curated/*.fasta > supermatrix.fasta
+phorge align  -p mafft -i run/clean/*.fasta -e _aln -o run/aligned/
+phorge curate run/aligned/*.fasta -o run/curated/
+phorge concat run/curated/*.fasta > supermatrix.fasta
 ```
 
 `refs/` holds one reference FASTA per gene (e.g. `COI.fasta`, `16S.fasta`); each may contain several sequences spanning your taxa to catch divergent hits.
@@ -468,7 +464,7 @@ cladekit concat run/curated/*.fasta > supermatrix.fasta
 
 ## Development Note
 
-Cladekit is being built as both a real research tool and a vehicle for learning Rust. Development is assisted by Claude (Anthropic), which serves as a teaching aid and coding partner. The design, domain knowledge, and direction are the author's own.
+Phorge is being built as both a real research tool and a vehicle for learning Rust. Development is assisted by Claude (Anthropic), which serves as a teaching aid and coding partner. The design, domain knowledge, and direction are the author's own.
 
 ## Author
 

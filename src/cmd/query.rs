@@ -119,7 +119,7 @@ async fn query_taxon(client: &EutilsClient, taxid: u64, group: TaxonGroup) -> Re
     })
 }
 
-/// Pull the fields cladekit needs out of an esummary docsum page, appending an
+/// Pull the fields phorge needs out of an esummary docsum page, appending an
 /// [`Accession`] per record. Each record is stamped with the `query_taxid` and
 /// `group` that surfaced it, so provenance survives later flattening. Returns the
 /// number parsed. Records missing an accession (or carrying an error) are skipped

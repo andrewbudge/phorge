@@ -6,7 +6,7 @@ use std::process::Command;
 
 use clap::{ArgGroup, Args};
 
-use cladekit::parse_fasta;
+use phorge::parse_fasta;
 
 #[derive(Args)]
 // Exactly one reference form is required: a single multi-gene file, or one
@@ -216,7 +216,7 @@ pub fn run(args: ExtractArgs) {
     fs::create_dir_all(&args.output).expect("Could not create output directory");
 
     // Unique temp dir per process so parallel runs don't collide
-    let tmp_dir = std::env::temp_dir().join(format!("cladekit_extract_{}", std::process::id()));
+    let tmp_dir = std::env::temp_dir().join(format!("phorge_extract_{}", std::process::id()));
     fs::create_dir_all(&tmp_dir).expect("Could not create temp directory");
 
     let pooled_ref_path = tmp_dir.join("pooled_reference.fasta");

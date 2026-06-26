@@ -25,8 +25,8 @@ pub struct AlignArgs {
 
     /// Extra flags passed verbatim to the aligner (after --).
     /// Replaces the default flag: --auto for mafft, -align for muscle.
-    /// Example: cladekit align -p mafft ... -- --thread 4 --maxiterate 1000
-    /// Example: cladekit align -p muscle ... -- -super5
+    /// Example: phorge align -p mafft ... -- --thread 4 --maxiterate 1000
+    /// Example: phorge align -p muscle ... -- -super5
     #[arg(last = true)]
     pub passthrough: Vec<String>,
 }

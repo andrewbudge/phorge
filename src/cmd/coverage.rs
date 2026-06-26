@@ -1,4 +1,4 @@
-use cladekit::print_table;
+use phorge::print_table;
 use clap::Args;
 use std::fs::File;
 use std::io::{BufRead, BufReader};

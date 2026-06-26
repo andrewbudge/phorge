@@ -2,6 +2,7 @@
 
 # dirs to ignore
 /testdata
+/hept_test
 
 # Claude stuff
 CLAUDE.md

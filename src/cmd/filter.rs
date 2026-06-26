@@ -1,4 +1,4 @@
-use cladekit::parse_fasta;
+use phorge::parse_fasta;
 use clap::Args;
 use std::collections::HashMap;
 use std::fs::File;

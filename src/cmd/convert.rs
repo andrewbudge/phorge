@@ -1,4 +1,4 @@
-use cladekit::{is_dna, parse_fasta};
+use phorge::{is_dna, parse_fasta};
 use std::{
     fs::File,
     io::{BufRead, BufReader},

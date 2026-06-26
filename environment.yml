@@ -1,4 +1,4 @@
-name: cladekit-tools
+name: phorge-tools
 channels:
   - bioconda
   - conda-forge

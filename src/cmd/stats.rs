@@ -1,4 +1,4 @@
-use cladekit::{is_dna, parse_fasta, print_table};
+use phorge::{is_dna, parse_fasta, print_table};
 use clap::Args;
 use std::collections::HashMap;
 use std::path::Path;

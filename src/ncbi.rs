@@ -1,4 +1,4 @@
-//! Minimal async client for the NCBI E-utilities used by cladekit.
+//! Minimal async client for the NCBI E-utilities used by phorge.
 //!
 //! This is the network boundary, so it exposes a typed [`NcbiError`]
 //! (thiserror) for the failures callers may want to distinguish — notably the
@@ -56,7 +56,7 @@ impl EutilsClient {
         let limiter = RateLimiter::direct(quota);
         let http = reqwest::Client::builder()
             .user_agent(format!(
-                "cladekit/{} ({})",
+                "phorge/{} ({})",
                 env!("CARGO_PKG_VERSION"),
                 email
             ))
@@ -66,7 +66,7 @@ impl EutilsClient {
             limiter,
             api_key,
             email,
-            tool: "cladekit".to_string(),
+            tool: "phorge".to_string(),
         })
     }
 

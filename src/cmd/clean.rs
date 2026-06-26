@@ -1,6 +1,6 @@
 use crate::models::QueryResult;
 use anyhow::{Context, Result};
-use cladekit::parse_fasta;
+use phorge::parse_fasta;
 use clap::Args;
 use std::collections::HashMap;
 use std::fs::{self, File};
