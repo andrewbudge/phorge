@@ -280,19 +280,20 @@ query complete
 ---
 ### fetch
 
-Download the sequences for a `query_results.json` manifest, writing raw NCBI FASTA shards to `<out>/raw/`. The download is resumable — a manifest tracks completed shards, so an interrupted run picks up where it left off. Headers are written verbatim; rewriting them is `clean`'s job.
+Download the sequences for a `query_results.json` manifest. Sequences download in shards directly into `<out>`; once every shard succeeds they collapse into a single `<out>/combined.fasta` and the shards are removed. The download is resumable — a manifest tracks completed shards, so an interrupted run picks up where it left off, and a finished `combined.fasta` makes a re-run a no-op. Headers are written verbatim; rewriting them is `clean`'s job.
 
 ```bash
 $ phorge fetch -q run/query_results.json -o run/ --email you@example.org --yes
 preflight ready to download  records=3586  chunks=8  est_mb=2.4
 shard written  chunk=0  records=500
 ...
-fetch complete  records=3586  shard_dir=run/raw
+fetch complete  chunks=8  records=3586  output=run/combined.fasta
 ```
 
 **Flags:**
 - `-q, --query` — path to `query_results.json` (from `query`)
-- `-o, --out` — output directory (shards go to `<out>/raw/`)
+- `-o, --out` — output directory; shards download here, then collapse into `combined.fasta` on success
+- `--log-dir` — write the JSON log here instead of alongside the output (e.g. fast scratch); default: `<out>`
 - `--min-length` / `--max-length` — drop records outside a length range before downloading
 - `--email` — email address required by NCBI ToS (required)
 - `--api-key` — NCBI API key (optional)
@@ -312,9 +313,9 @@ Requires [MMseqs2](https://github.com/soedinglab/MMseqs2) installed and in your 
 
 ```bash
 # refs/ has one file per gene: COI.fasta, 16S.fasta, 28S.fasta, ...
-# run/raw/ contains the FASTA shards written by fetch
+# run/combined.fasta is the multifasta written by fetch
 
-$ phorge extract --refs refs/*.fasta -t run/raw/ -o run/genes/
+$ phorge extract --refs refs/*.fasta -t run/combined.fasta -o run/genes/
 Pooled 19 reference sequence(s).
 Pooling 8 target files...
 Parsing results...
@@ -331,6 +332,7 @@ $ ls run/genes/
 - `-o, --output` — output directory for per-gene FASTAs
 - `--min-identity` — minimum MMseqs2 sequence identity to keep a hit, 0.0–1.0 (default: 0.7); the sole quality gate, so choose references that cover your taxa
 - `-s, --sensitivity` — MMseqs2 sensitivity, 1.0 (fast) to 7.5 (max); default 5.7
+- `--max-memory-limit` — cap MMseqs2 RAM by splitting the search into sequential chunks (e.g. `8G`); default: unlimited
 - `--flank` — extra bases to grab on either side of each hit (default: 0)
 - `--keep-intermediates` — keep the temp directory with pooled targets and raw MMseqs2 output
 ---
@@ -471,7 +473,7 @@ From taxon IDs to a supermatrix. The acquisition layer (`query → fetch → ext
 # 1. Acquire — TaxIDs in, one curated FASTA per gene out
 phorge query --ingroup 89829 --outgroup 241031 309676 -o run/ --email you@example.org
 phorge fetch   -q run/query_results.json -o run/ --email you@example.org --yes
-phorge extract --refs refs/*.fasta -t run/raw/ -o run/genes/
+phorge extract --refs refs/*.fasta -t run/combined.fasta -o run/genes/
 phorge clean   --genes-dir run/genes/ -q run/query_results.json -o run/clean/ --prefer MyLab
 
 # 2. Build — align, trim, and concatenate into a supermatrix
