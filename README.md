@@ -1,8 +1,33 @@
+<div align="center">
+
+<img src="https://raw.githubusercontent.com/andrewbudge/phorge/main/docs/phorge-assets/phorge-mark-ember.svg" alt="phorge logo" width="140">
+
+# phorge
+
+**A composable CLI toolkit for phylogenetics — from NCBI acquisition to supermatrix, in one binary.**
+
+[![Crates.io](https://img.shields.io/crates/v/phorge.svg)](https://crates.io/crates/phorge)
+[![Downloads](https://img.shields.io/crates/d/phorge.svg)](https://crates.io/crates/phorge)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Rust](https://img.shields.io/badge/rust-2024_edition-orange.svg)
+
+</div>
+
 Phorge is a lightweight, composable CLI phylogenetics toolkit. A single binary, Phorge provides many subcommands that replace common chains of bash commands or a collection of individual programs in phylogenetic pipelines. Examples include NCBI sequence acquisition, homology-based gene extraction, concatenation, and alignment quality control.
 
 Phorge has two layers in one binary: lean file tools (`getheaders`, `concat`, `stats`, `coverage`, `convert`, `filter`, `curate`, `align`) and an acquisition layer (`query`, `fetch`, `extract`, `clean`) that pulls and curates sequences from NCBI. A broken external tool or network never affects the self-contained subcommands.
 
-**Note:** Phorge is under active development. Subcommands may change or be added as the project matures.
+> **Note:** Phorge is under active development. Subcommands may change or be added as the project matures.
+
+## Contents
+
+- [Install](#install)
+- [External Dependencies](#external-dependencies)
+- **Subcommands**
+  - File tools: [getheaders](#getheaders-ghd) · [concat](#concat-liger) · [stats](#stats) · [coverage](#coverage) · [convert](#convert) · [filter](#filter) · [curate](#curate) · [align](#align-aln)
+  - Acquisition: [query](#query) · [fetch](#fetch) · [extract](#extract) · [clean](#clean)
+- [Pipeline example](#pipeline-example)
+- [Planned Subcommands](#planned-subcommands)
 
 ## Install
 
@@ -321,9 +346,9 @@ Done. Wrote 591 cleaned sequence(s) across 7 gene file(s); dropped 2478 duplicat
 Use `--prefer` to favour particular records during dedup — for example your own museum vouchers — even when they aren't the longest. A record is preferred if the substring appears in its extract header or its GenBank title:
 
 ```bash
-$ phorge clean --genes-dir run/genes/ -q run/query_results.json -o run/clean/ --prefer BYU
+$ phorge clean --genes-dir run/genes/ -q run/query_results.json -o run/clean/ --prefer MyLab
 Done. Wrote 591 cleaned sequence(s) across 7 gene file(s); dropped 2478 duplicate(s).
-  11 kept record(s) matched --prefer ["BYU"].
+  11 kept record(s) matched --prefer ["MyLab"].
 ```
 
 **Flags:**
@@ -445,7 +470,7 @@ From taxon IDs to a supermatrix. The acquisition layer (`query → fetch → ext
 phorge query --ingroup 89829 --outgroup 241031 309676 -o run/ --email you@example.org
 phorge fetch   -q run/query_results.json -o run/ --email you@example.org --yes
 phorge extract --refs refs/*.fasta -t run/raw/ -o run/genes/
-phorge clean   --genes-dir run/genes/ -q run/query_results.json -o run/clean/ --prefer BYU
+phorge clean   --genes-dir run/genes/ -q run/query_results.json -o run/clean/ --prefer MyLab
 
 # 2. Build — align, trim, and concatenate into a supermatrix
 phorge align  -p mafft -i run/clean/*.fasta -e _aln -o run/aligned/
