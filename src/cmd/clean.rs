@@ -1,7 +1,7 @@
 use crate::models::QueryResult;
 use anyhow::{Context, Result};
-use phorge::parse_fasta;
 use clap::Args;
+use phorge::parse_fasta;
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
@@ -22,7 +22,7 @@ pub struct CleanArgs {
     pub out: PathBuf,
 
     /// Prefer records whose extract header or GenBank title contains this
-    /// substring when deduplicating (e.g. `--prefer BYU` to favour the lab's
+    /// substring when deduplicating (e.g. `--prefer LabCode` to favour the lab's
     /// own vouchers). Repeatable; a match on any wins. Overrides the
     /// longest-sequence rule.
     #[arg(long)]
