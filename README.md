@@ -34,16 +34,18 @@ Phorge has two layers in one binary: lean file tools (`getheaders`, `concat`, `s
 Requires [Rust](https://www.rust-lang.org/tools/install).
 
 ```bash
+cargo install phorge
+```
+
+This builds the binary and adds `phorge` to your PATH. Running it again later upgrades to the latest published version.
+
+To build from the latest (unreleased) source instead:
+
+```bash
 cargo install --git https://github.com/andrewbudge/phorge
 ```
 
-This builds the binary and adds `phorge` to your PATH.
-
-To update to the latest version:
-
-```bash
-cargo install --force --git https://github.com/andrewbudge/phorge
-```
+Updating a git install requires `--force` (add `--force` to either command to reinstall the same version).
 
 ## External Dependencies
 
