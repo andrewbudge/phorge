@@ -27,7 +27,7 @@ pub struct ExtractArgs {
     #[arg(long, num_args = 1..)]
     pub refs: Option<Vec<String>>,
 
-    /// Target FASTA files or a directory containing them (e.g. fetch's raw/ dir)
+    /// Target FASTA files or a directory containing them (e.g. fetch's output dir)
     #[arg(short, long, required = true, num_args = 1..)]
     pub targets: Vec<String>,
 

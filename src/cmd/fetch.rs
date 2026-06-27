@@ -15,7 +15,7 @@ pub struct FetchArgs {
     #[arg(long, short = 'q')]
     pub query: PathBuf,
 
-    /// Output directory (sequence shards are written under <out>/raw/)
+    /// Output directory. Shards download here, then collapse into combined.fasta on success.
     #[arg(long, short = 'o')]
     pub out: PathBuf,
 
@@ -70,7 +70,7 @@ struct Manifest {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Chunk {
-    /// Drives the shard filename (`raw/shard_0003.fasta`) and never changes.
+    /// Drives the shard filename (`shard_0003.fasta`) and never changes.
     index: usize,
     accessions: Vec<String>,
     state: ChunkState,
@@ -85,10 +85,20 @@ enum ChunkState {
 }
 
 pub async fn run(args: FetchArgs) -> Result<()> {
-    let raw_dir = args.out.join("raw");
-    std::fs::create_dir_all(&raw_dir)
-        .with_context(|| format!("creating shard directory {}", raw_dir.display()))?;
-    let manifest_path = args.out.join("download_manifest.json");
+    let out_dir = args.out.clone();
+    let combined_path = out_dir.join("combined.fasta");
+
+    // A combined file exists only once a prior run fully succeeded and collapsed
+    // its shards. Treat its presence as "already done" so a re-run is a no-op;
+    // delete it to force a fresh fetch.
+    if combined_path.exists() {
+        info!(output = %combined_path.display(), "combined output already present; nothing to do");
+        return Ok(());
+    }
+
+    std::fs::create_dir_all(&out_dir)
+        .with_context(|| format!("creating output directory {}", out_dir.display()))?;
+    let manifest_path = out_dir.join("download_manifest.json");
 
     // Resume an existing run, or build a fresh manifest from query results. The
     // confirmation gate only fires on a fresh run — a resume was already approved.
@@ -106,24 +116,22 @@ pub async fn run(args: FetchArgs) -> Result<()> {
 
     // Shards on disk are the source of truth: mark present shards Done, and redo
     // any chunk whose shard has vanished since the manifest was last written.
-    manifest.reconcile(&raw_dir);
+    manifest.reconcile(&out_dir);
     manifest
         .save(&manifest_path)
         .with_context(|| format!("writing {}", manifest_path.display()))?;
 
     let client = EutilsClient::new(args.api_key, args.email).context("building NCBI client")?;
-    download(&client, &mut manifest, &raw_dir, &manifest_path).await?;
+    download(&client, &mut manifest, &out_dir, &manifest_path).await?;
 
-    let done = manifest
-        .chunks
-        .iter()
-        .filter(|c| c.state == ChunkState::Done)
-        .count();
+    // download() only returns Ok when every chunk is Done, so all shards are on
+    // disk. Collapse them into one multifasta and drop the now-redundant shards.
+    consolidate(&out_dir, &combined_path, &manifest)?;
+
     info!(
-        chunks_done = done,
-        chunks_total = manifest.chunks.len(),
+        chunks = manifest.chunks.len(),
         records = manifest.total_records,
-        shard_dir = %raw_dir.display(),
+        output = %combined_path.display(),
         "fetch complete"
     );
     Ok(())
@@ -241,9 +249,9 @@ impl Manifest {
 
     /// Bring chunk states in line with what is actually on disk. Present shard =>
     /// Done; a Done chunk whose shard disappeared => back to Pending.
-    fn reconcile(&mut self, raw_dir: &Path) {
+    fn reconcile(&mut self, out_dir: &Path) {
         for chunk in &mut self.chunks {
-            let exists = raw_dir.join(shard_name(chunk.index)).exists();
+            let exists = out_dir.join(shard_name(chunk.index)).exists();
             chunk.state = match (chunk.state, exists) {
                 (_, true) => ChunkState::Done,
                 (ChunkState::Done, false) => ChunkState::Pending,
@@ -260,7 +268,7 @@ impl Manifest {
 async fn download(
     client: &EutilsClient,
     manifest: &mut Manifest,
-    raw_dir: &Path,
+    out_dir: &Path,
     manifest_path: &Path,
 ) -> Result<()> {
     let pending: Vec<usize> = (0..manifest.chunks.len())
@@ -304,7 +312,7 @@ async fn download(
 
         match outcome {
             Ok(body) => {
-                write_shard(raw_dir, index, &body)
+                write_shard(out_dir, index, &body)
                     .with_context(|| format!("writing shard {index}"))?;
                 manifest.chunks[i].state = ChunkState::Done;
                 info!(chunk = index, records = ids.len(), "shard written");
@@ -326,17 +334,49 @@ async fn download(
     Ok(())
 }
 
-/// Write a shard atomically: temp file in `raw_dir`, fsync, then rename onto the
+/// Write a shard atomically: temp file in `out_dir`, fsync, then rename onto the
 /// final name. A crash before the rename leaves only the temp file, which a
 /// resume ignores (it keys off the final shard name) — so no duplicates and no
 /// partial-record corruption are ever possible.
-fn write_shard(raw_dir: &Path, index: usize, body: &str) -> Result<()> {
-    let mut tmp = tempfile::NamedTempFile::new_in(raw_dir).context("creating temp shard")?;
+fn write_shard(out_dir: &Path, index: usize, body: &str) -> Result<()> {
+    let mut tmp = tempfile::NamedTempFile::new_in(out_dir).context("creating temp shard")?;
     tmp.write_all(body.as_bytes())
         .context("writing temp shard")?;
     tmp.as_file().sync_all().context("flushing temp shard")?;
-    tmp.persist(raw_dir.join(shard_name(index)))
+    tmp.persist(out_dir.join(shard_name(index)))
         .map_err(|e| anyhow::anyhow!("persisting shard {index}: {e}"))?;
+    Ok(())
+}
+
+/// Collapse every shard into a single multifasta, then delete the shards. Only
+/// called once the download fully succeeds, so every shard named in the manifest
+/// is present. The combined file is written atomically (temp + rename) so a crash
+/// mid-merge never leaves a half-built file a re-run would mistake for done; the
+/// shards are removed only after that rename lands.
+fn consolidate(out_dir: &Path, combined_path: &Path, manifest: &Manifest) -> Result<()> {
+    let mut tmp =
+        tempfile::NamedTempFile::new_in(out_dir).context("creating temp combined file")?;
+    {
+        let mut writer = std::io::BufWriter::new(tmp.as_file_mut());
+        for chunk in &manifest.chunks {
+            let shard = out_dir.join(shard_name(chunk.index));
+            let mut reader = std::fs::File::open(&shard)
+                .with_context(|| format!("reading shard {}", shard.display()))?;
+            std::io::copy(&mut reader, &mut writer)
+                .with_context(|| format!("appending shard {}", shard.display()))?;
+        }
+        writer.flush().context("flushing combined file")?;
+    }
+    tmp.as_file().sync_all().context("syncing combined file")?;
+    tmp.persist(combined_path)
+        .map_err(|e| anyhow::anyhow!("persisting combined file: {e}"))?;
+
+    // Combined file is durably on disk; the shards are now redundant.
+    for chunk in &manifest.chunks {
+        let shard = out_dir.join(shard_name(chunk.index));
+        std::fs::remove_file(&shard)
+            .with_context(|| format!("removing shard {}", shard.display()))?;
+    }
     Ok(())
 }
 
