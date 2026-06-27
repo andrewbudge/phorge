@@ -21,6 +21,10 @@ pub struct CleanArgs {
     #[arg(long, short = 'o')]
     pub out: PathBuf,
 
+    /// Write the JSON log here instead of alongside the output (e.g. fast scratch).
+    #[arg(long)]
+    pub log_dir: Option<PathBuf>,
+
     /// Prefer records whose extract header or GenBank title contains this
     /// substring when deduplicating (e.g. `--prefer LabCode` to favour the lab's
     /// own vouchers). Repeatable; a match on any wins. Overrides the

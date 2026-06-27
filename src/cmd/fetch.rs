@@ -19,6 +19,10 @@ pub struct FetchArgs {
     #[arg(long, short = 'o')]
     pub out: PathBuf,
 
+    /// Write the JSON log here instead of alongside the output (e.g. fast scratch).
+    #[arg(long)]
+    pub log_dir: Option<PathBuf>,
+
     /// Drop records shorter than this before downloading (preflight trim)
     #[arg(long)]
     pub min_length: Option<usize>,

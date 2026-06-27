@@ -69,14 +69,14 @@ enum Commands {
     Clean(cmd::clean::CleanArgs),
 }
 
-/// The output directory a command writes to — also where its slice of the
-/// pipeline log lives. Only the acquisition commands with an out dir log to a
-/// file; the lean file tools keep plain stderr.
-fn out_dir(command: &Commands) -> Option<&Path> {
+/// Directory the JSON log is written to: an explicit `--log-dir` if set,
+/// otherwise the command's output directory. Only the acquisition commands log
+/// to a file; the lean file tools keep plain stderr.
+fn log_dir(command: &Commands) -> Option<&Path> {
     match command {
-        Commands::Query(a) => Some(a.out.as_path()),
-        Commands::Fetch(a) => Some(a.out.as_path()),
-        Commands::Clean(a) => Some(a.out.as_path()),
+        Commands::Query(a) => Some(a.log_dir.as_deref().unwrap_or(a.out.as_path())),
+        Commands::Fetch(a) => Some(a.log_dir.as_deref().unwrap_or(a.out.as_path())),
+        Commands::Clean(a) => Some(a.log_dir.as_deref().unwrap_or(a.out.as_path())),
         _ => None,
     }
 }
@@ -109,7 +109,7 @@ fn init_tracing(command: &Commands) -> anyhow::Result<()> {
         .with_writer(std::io::stderr)
         .with_target(false);
 
-    match out_dir(command) {
+    match log_dir(command) {
         Some(dir) => {
             std::fs::create_dir_all(dir)
                 .with_context(|| format!("creating output directory {}", dir.display()))?;

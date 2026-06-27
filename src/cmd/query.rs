@@ -20,6 +20,10 @@ pub struct QueryArgs {
     #[arg(long, short = 'o')]
     pub out: PathBuf,
 
+    /// Write the JSON log here instead of alongside the output (e.g. fast scratch).
+    #[arg(long)]
+    pub log_dir: Option<PathBuf>,
+
     /// Email address required by NCBI ToS for automated access
     #[arg(long)]
     pub email: String,
