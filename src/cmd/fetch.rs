@@ -364,10 +364,16 @@ fn consolidate(out_dir: &Path, combined_path: &Path, manifest: &Manifest) -> Res
         let mut writer = std::io::BufWriter::new(tmp.as_file_mut());
         for chunk in &manifest.chunks {
             let shard = out_dir.join(shard_name(chunk.index));
-            let mut reader = std::fs::File::open(&shard)
+            let body = std::fs::read_to_string(&shard)
                 .with_context(|| format!("reading shard {}", shard.display()))?;
-            std::io::copy(&mut reader, &mut writer)
-                .with_context(|| format!("appending shard {}", shard.display()))?;
+            // efetch separates records with a blank line; copied verbatim those
+            // would leave gaps between sequences in the combined file. Drop blank
+            // lines so the output is gap-free FASTA — headers and sequence lines
+            // pass through unchanged.
+            for line in body.lines().filter(|l| !l.trim().is_empty()) {
+                writeln!(writer, "{line}")
+                    .with_context(|| format!("appending shard {}", shard.display()))?;
+            }
         }
         writer.flush().context("flushing combined file")?;
     }
