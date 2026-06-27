@@ -8,6 +8,7 @@ repository = "https://github.com/andrewbudge/phorge"
 readme = "README.md"
 keywords = ["phylogenetics", "bioinformatics", "fasta", "cli", "genomics"]
 categories = ["command-line-utilities", "science"]
+exclude = ["docs/"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
