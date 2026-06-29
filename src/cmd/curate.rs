@@ -192,7 +192,12 @@ pub fn run(args: CurateArgs) {
                     }
                 }
 
-                let gappiness = gap_count as f64 / n_taxa as f64;
+                // Round to 4 decimals to match ClipKIT, which compares the
+                // rounded site gappiness (np.around(..., 4)) against the
+                // threshold. (np.around is round-half-to-even; f64::round is
+                // round-half-away-from-zero — they differ only for exact .5
+                // ties at the 5th decimal, which k/n gappiness rarely hits.)
+                let gappiness = ((gap_count as f64 / n_taxa as f64) * 10_000.0).round() / 10_000.0;
                 let qualifying = freq.values().filter(|&&c| c >= 2).count();
                 SiteStats {
                     gappiness,
@@ -214,10 +219,14 @@ pub fn run(args: CurateArgs) {
             .iter()
             .enumerate()
             .filter_map(|(col, s)| {
+                // ClipKIT uses a mode-dependent boundary: kpi-* modes trim
+                // strictly ('> threshold', so keep '<='), while smart-gap /
+                // gappy / kpic-* trim on '>=' (keep '<'). Mirror that exactly.
+                let kpi_only = keep_p && !keep_c;
                 let gap_ok = if keep_s {
-                    s.gappiness < smart_threshold
+                    if kpi_only { s.gappiness <= smart_threshold } else { s.gappiness < smart_threshold }
                 } else if keep_g {
-                    s.gappiness < args.gap_threshold
+                    if kpi_only { s.gappiness <= args.gap_threshold } else { s.gappiness < args.gap_threshold }
                 } else {
                     true
                 };
