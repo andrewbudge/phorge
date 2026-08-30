@@ -18,6 +18,7 @@ mod models;
 mod ncbi;
 
 #[derive(Parser)]
+#[command(name = "phorge", version)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
