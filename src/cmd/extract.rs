@@ -66,6 +66,14 @@ pub struct ExtractArgs {
     #[arg(long)]
     pub max_memory_limit: Option<String>,
 
+    /// MMseqs2 k-mer length (MMseqs2 -k). Left to MMseqs2 to choose when unset.
+    /// Its automatic choice for nucleotide search is 15, whose index table needs
+    /// more RAM than a 16 GB machine has; 13 costs a few hundred MB and finds
+    /// the same hits. Lower k is slower and less specific, so only reach for
+    /// this when the search dies on memory.
+    #[arg(long)]
+    pub kmer_length: Option<usize>,
+
     /// Keep intermediate files instead of deleting them after the search
     #[arg(long, default_value_t = false)]
     pub keep_intermediates: bool,
@@ -366,6 +374,12 @@ pub fn run(args: ExtractArgs) {
         cmd.args(["--split-memory-limit", limit]);
     }
 
+    // Same rule for k: no flag means MMseqs2 picks, which is right on a machine
+    // with the RAM for it.
+    if let Some(k) = args.kmer_length {
+        cmd.args(["-k", &k.to_string()]);
+    }
+
     let status = cmd
         .stdout(log_file)
         .stderr(log_file2)
@@ -377,6 +391,19 @@ pub fn run(args: ExtractArgs) {
             "Error: mmseqs easy-search failed. See {}",
             log_path.display()
         );
+        // MMseqs2 reports an out-of-memory prefilter as a bare "Cannot fit
+        // databases into NG" buried in a very long log. The cause is almost
+        // always the k-mer index table, whose size is set by k rather than by
+        // how big the database is, so --max-memory-limit cannot rescue it.
+        if fs::read_to_string(&log_path)
+            .is_ok_and(|log| log.contains("Cannot fit databases into"))
+        {
+            eprintln!(
+                "\nThe search ran out of memory building its k-mer index. \
+                 Splitting cannot help: the index table is sized by k, not by \
+                 the database. Retry with a shorter k, e.g. --kmer-length 13."
+            );
+        }
         std::process::exit(1);
     }
 
