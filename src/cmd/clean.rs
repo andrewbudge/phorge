@@ -88,6 +88,7 @@ pub async fn run(args: CleanArgs) -> Result<()> {
     let mut total_kept = 0usize;
     let mut total_dropped = 0usize;
     let mut total_preferred = 0usize;
+    let mut unknown_taxid = 0usize;
     let mut missing: Vec<String> = Vec::new();
 
     for path in &gene_files {
@@ -116,6 +117,9 @@ pub async fn run(args: CleanArgs) -> Result<()> {
                     let preferred = args.prefer.iter().any(|p| {
                         header.contains(p.as_str()) || taxon.annotation.contains(p.as_str())
                     });
+                    if taxon.taxid == 0 {
+                        unknown_taxid += 1;
+                    }
                     joined.push(CleanRecord {
                         taxid: taxon.taxid,
                         name: taxon.name.clone(),
@@ -156,6 +160,16 @@ pub async fn run(args: CleanArgs) -> Result<()> {
         gene_files.len(),
         total_dropped
     );
+    if unknown_taxid > 0 {
+        // These records are kept one-per-accession rather than collapsed by
+        // taxon, because a TaxID of 0 means the query file did not name one.
+        eprintln!(
+            "  warning: {} record(s) had no TaxID in {}; they were kept \
+             per-accession instead of being deduplicated by taxon.",
+            unknown_taxid,
+            args.query.display()
+        );
+    }
     if !args.prefer.is_empty() {
         eprintln!(
             "  {} kept record(s) matched --prefer {:?}.",
@@ -219,20 +233,50 @@ fn parse_ident(header: &str) -> f64 {
 /// Keep one record per TaxID. Ranking, highest first: `--prefer` match, then
 /// sequence length, then extract identity. Output is sorted by TaxID then
 /// accession for deterministic files.
+///
+/// Records whose TaxID is unknown (0) are keyed by accession instead — see
+/// [`dedup_key`].
 fn dedup_by_taxid(records: Vec<CleanRecord>) -> Vec<CleanRecord> {
-    let mut best: HashMap<u64, CleanRecord> = HashMap::new();
+    let mut best: HashMap<DedupKey, CleanRecord> = HashMap::new();
     for rec in records {
-        match best.get(&rec.taxid) {
+        let key = dedup_key(&rec);
+        match best.get(&key) {
             // Keep the incumbent only if it ranks at least as high as the newcomer.
             Some(cur) if outranks(cur, &rec) => {}
             _ => {
-                best.insert(rec.taxid, rec);
+                best.insert(key, rec);
             }
         }
     }
-    let mut kept: Vec<CleanRecord> = best.into_values().collect();
-    kept.sort_by(|a, b| a.taxid.cmp(&b.taxid).then(a.accession.cmp(&b.accession)));
-    kept
+    let mut kept: Vec<(DedupKey, CleanRecord)> = best.into_iter().collect();
+    kept.sort_by(|(ka, a), (kb, b)| ka.cmp(kb).then(a.accession.cmp(&b.accession)));
+    kept.into_iter().map(|(_, rec)| rec).collect()
+}
+
+/// The identity a record is deduplicated by: its TaxID, or its accession when
+/// the TaxID is unknown.
+///
+/// A TaxID of 0 means "not known" — `read_query_tsv` fills it in when the
+/// query file has no `taxid` column, which happens whenever the user filters
+/// the TSV down with `cut`/`awk`. Deduplicating those records by TaxID would
+/// collapse every unnamed accession into a single survivor and silently delete
+/// the rest, so they are kept one-per-accession instead.
+///
+/// Variant order matters: `Unknown` sorts before `Taxid` so records with an
+/// unknown TaxID keep the position the old numeric sort gave them (0 before
+/// every real TaxID).
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum DedupKey {
+    Unknown(String),
+    Taxid(u64),
+}
+
+fn dedup_key(rec: &CleanRecord) -> DedupKey {
+    if rec.taxid == 0 {
+        DedupKey::Unknown(rec.accession.clone())
+    } else {
+        DedupKey::Taxid(rec.taxid)
+    }
 }
 
 /// True if `a` should be kept over `b` for the same TaxID: prefer-match wins,
@@ -263,4 +307,63 @@ fn write_gene(
         writeln!(writer, "{}", rec.seq)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn record(taxid: u64, accession: &str, seq_len: usize) -> CleanRecord {
+        CleanRecord {
+            taxid,
+            name: "Felis catus".to_string(),
+            accession: accession.to_string(),
+            ident: 0.99,
+            preferred: false,
+            seq: "A".repeat(seq_len),
+        }
+    }
+
+    #[test]
+    fn known_taxids_deduplicate_to_one_record_per_taxon() {
+        let kept = dedup_by_taxid(vec![
+            record(9901, "ACC1", 100),
+            record(9901, "ACC2", 200),
+            record(9902, "ACC3", 300),
+        ]);
+        assert_eq!(kept.len(), 2, "one record per TaxID");
+        let accessions: Vec<&str> = kept.iter().map(|r| r.accession.as_str()).collect();
+        assert_eq!(accessions, ["ACC2", "ACC3"], "longest sequence wins");
+    }
+
+    #[test]
+    fn unknown_taxids_are_not_collapsed_into_each_other() {
+        // A query TSV with no `taxid` column fills the field with 0. Keying
+        // those records by TaxID would silently delete all but one of them.
+        let kept = dedup_by_taxid(vec![
+            record(0, "ACC1", 100),
+            record(0, "ACC2", 200),
+            record(0, "ACC3", 300),
+        ]);
+        assert_eq!(
+            kept.len(),
+            3,
+            "records with an unknown TaxID are kept one per accession"
+        );
+        let accessions: Vec<&str> = kept.iter().map(|r| r.accession.as_str()).collect();
+        assert_eq!(accessions, ["ACC1", "ACC2", "ACC3"]);
+    }
+
+    #[test]
+    fn unknown_and_known_taxids_do_not_interfere() {
+        let kept = dedup_by_taxid(vec![
+            record(0, "ACC1", 100),
+            record(0, "ACC2", 200),
+            record(9901, "ACC3", 300),
+            record(9901, "ACC4", 400),
+        ]);
+        assert_eq!(kept.len(), 3);
+        let accessions: Vec<&str> = kept.iter().map(|r| r.accession.as_str()).collect();
+        assert_eq!(accessions, ["ACC1", "ACC2", "ACC4"]);
+    }
 }
