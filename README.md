@@ -357,7 +357,8 @@ $ ls run/genes/
 - `-c, --coverage` — minimum fraction of the reference gene a hit must cover, 0.0–1.0 (default: 0.5). Raise it to demand near-complete genes; set `0.0` to keep every fragment that passes identity
 - `-s, --sensitivity` — MMseqs2 sensitivity, 1.0 (fast) to 7.5 (max); default 5.7
 - `--max-seqs` — max target sequences each reference gene is aligned against (MMseqs2 `--max-seqs`, default 300). The prefilter keeps only the top N targets per gene by k-mer score, so if you have **more than 300 target sequences**, the least-similar ones silently get no hit — raise this above your target count for large runs
-- `--max-memory-limit` — cap MMseqs2 RAM by splitting the search into sequential chunks (e.g. `8G`); default: unlimited
+- `--max-memory-limit` — cap MMseqs2 RAM by splitting the search into sequential chunks (e.g. `8G`); default: unlimited. This caps the *search*, not the k-mer index table (see `--kmer-length`)
+- `--kmer-length` — MMseqs2 k-mer length (MMseqs2 `-k`); default `13`. The index table MMseqs2 builds for a nucleotide search is sized by `k` and **not** by the database, so its automatic choice (`k=15`) reserves several GB of RAM no matter how little sequence you search — enough to OOM-kill the machine on a small run. `k=13` needs ~550 MB and finds the same hits. Pass `0` to hand the choice back to MMseqs2
 - `--flank` — extra bases to grab on either side of each hit (default: 0)
 - `--keep-intermediates` — keep the temp directory with pooled targets and raw MMseqs2 output
 ---
@@ -365,7 +366,7 @@ $ ls run/genes/
 
 Join `extract`'s per-gene output back to the query TSV, rewrite headers to `TaxID|Name|Accession|Gene`, and deduplicate to one sequence per taxon per gene. This recovers the TaxID and clean taxon name that homology search alone doesn't carry, and collapses the many accessions NCBI holds per taxon down to a single best representative per gene.
 
-Dedup keeps the longest sequence per TaxID, breaking ties by extract identity. Records whose accession isn't found in the query TSV are dropped and reported (broken provenance is useless to `concat`).
+Dedup keeps the longest sequence per TaxID, breaking ties by extract identity. Records whose accession isn't found in the query TSV are dropped and reported (broken provenance is useless to `concat`). Records whose TaxID is unknown — because the query TSV has no `taxid` column, which happens when you filter the TSV down with `cut`/`awk` — are kept one per accession rather than collapsed together, and the run says how many there were.
 
 Input FASTAs are positional — a single file, a list, a glob, or a directory all work.
 
