@@ -63,16 +63,20 @@ pub struct ExtractArgs {
     pub max_seqs: usize,
 
     /// Cap MMseqs2 RAM (e.g. 8G); splits the search to stay under it. Default: unlimited.
+    /// Note this does NOT cap the k-mer index table, which is sized by
+    /// --kmer-length rather than by the database.
     #[arg(long)]
     pub max_memory_limit: Option<String>,
 
-    /// MMseqs2 k-mer length (MMseqs2 -k). Left to MMseqs2 to choose when unset.
-    /// Its automatic choice for nucleotide search is 15, whose index table needs
-    /// more RAM than a 16 GB machine has; 13 costs a few hundred MB and finds
-    /// the same hits. Lower k is slower and less specific, so only reach for
-    /// this when the search dies on memory.
-    #[arg(long)]
-    pub kmer_length: Option<usize>,
+    /// MMseqs2 k-mer length (MMseqs2 -k). Default: 13.
+    ///
+    /// The index table MMseqs2 builds for a nucleotide search is sized by k
+    /// and not by the database, so its automatic choice (k=15) needs ~8 GB of
+    /// RAM no matter how little sequence you search — enough to OOM-kill the
+    /// machine on a small run. k=13 needs ~550 MB and finds the same hits.
+    /// Pass 0 to hand the choice back to MMseqs2.
+    #[arg(long, default_value_t = 13)]
+    pub kmer_length: usize,
 
     /// Keep intermediate files instead of deleting them after the search
     #[arg(long, default_value_t = false)]
@@ -374,11 +378,10 @@ pub fn run(args: ExtractArgs) {
         cmd.args(["--split-memory-limit", limit]);
     }
 
-    // Same rule for k: no flag means MMseqs2 picks, which is right on a machine
-    // with the RAM for it.
-    if let Some(k) = args.kmer_length {
-        cmd.args(["-k", &k.to_string()]);
-    }
+    // The k-mer index table is sized by k, not by the database, so the default
+    // is deliberately lower than MMseqs2's automatic choice for nucleotide
+    // search (15). 0 hands the choice back to MMseqs2.
+    cmd.args(["-k", &args.kmer_length.to_string()]);
 
     let status = cmd
         .stdout(log_file)
@@ -395,13 +398,14 @@ pub fn run(args: ExtractArgs) {
         // databases into NG" buried in a very long log. The cause is almost
         // always the k-mer index table, whose size is set by k rather than by
         // how big the database is, so --max-memory-limit cannot rescue it.
-        if fs::read_to_string(&log_path)
-            .is_ok_and(|log| log.contains("Cannot fit databases into"))
+        if fs::read_to_string(&log_path).is_ok_and(|log| log.contains("Cannot fit databases into"))
         {
             eprintln!(
                 "\nThe search ran out of memory building its k-mer index. \
                  Splitting cannot help: the index table is sized by k, not by \
-                 the database. Retry with a shorter k, e.g. --kmer-length 13."
+                 the database. Retry with a shorter k than the current {}, \
+                 e.g. --kmer-length 11.",
+                args.kmer_length
             );
         }
         std::process::exit(1);
@@ -462,5 +466,44 @@ pub fn run(args: ExtractArgs) {
         fs::remove_dir_all(&tmp_dir).expect("Could not remove temp directory");
     } else {
         eprintln!("Intermediates kept at: {}", tmp_dir.display());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[derive(Parser)]
+    struct TestCli {
+        #[command(flatten)]
+        extract: ExtractArgs,
+    }
+
+    fn parse(args: &[&str]) -> ExtractArgs {
+        let mut argv = vec!["test", "--reference", "ref.fa", "-o", "out", "target.fa"];
+        argv.extend_from_slice(args);
+        TestCli::parse_from(argv).extract
+    }
+
+    #[test]
+    fn kmer_length_defaults_below_mmseqs_automatic_choice() {
+        // MMseqs2's automatic choice for nucleotide search is k=15, and the
+        // dense 4^k index table it builds is sized by k rather than by the
+        // database: k=15 reserves several GB to search a handful of bases and
+        // can OOM-kill the machine. k=13 needs a few hundred MB and finds the
+        // same hits. If this default ever moves back up, it will take a
+        // machine down with it.
+        assert_eq!(parse(&[]).kmer_length, 13);
+    }
+
+    #[test]
+    fn kmer_length_zero_hands_the_choice_back_to_mmseqs() {
+        assert_eq!(parse(&["--kmer-length", "0"]).kmer_length, 0);
+    }
+
+    #[test]
+    fn kmer_length_can_be_lowered_further() {
+        assert_eq!(parse(&["--kmer-length", "11"]).kmer_length, 11);
     }
 }
