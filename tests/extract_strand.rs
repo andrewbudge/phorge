@@ -24,14 +24,11 @@ fn mmseqs_available() -> bool {
 }
 
 fn phorge_bin() -> PathBuf {
-    // The integration-test binary lives in target/<profile>/deps/, so the
-    // phorge executable is two levels up.
-    let mut p = std::env::current_exe().expect("locating the test binary");
-    p.pop();
-    if p.ends_with("deps") {
-        p.pop();
-    }
-    p.join("phorge")
+    // Cargo tells the test where the binary it just built actually is. Deriving
+    // it from current_exe() by hand breaks whenever Cargo changes its artifact
+    // layout, and a broken path reads as "phorge missing" rather than "test
+    // harness out of date" — which is how this test managed to never run.
+    PathBuf::from(env!("CARGO_BIN_EXE_phorge"))
 }
 
 fn reverse_complement(seq: &str) -> String {
@@ -113,6 +110,11 @@ fn extract_returns_minus_strand_hits_in_reference_orientation() {
     let status = Command::new(phorge_bin())
         .arg("extract")
         .args(["--refs", refs.to_str().unwrap()])
+        // MMseqs2's k-mer index table is sized by k, not by the database, so
+        // the default k=15 would reserve several GB to search two 1 KB
+        // sequences and can OOM-kill the machine. Pin it small: this test
+        // should cost milliseconds and a few hundred MB, not a crash.
+        .args(["--kmer-length", "13"])
         .args(["-o", out.to_str().unwrap()])
         .arg(dir.join("plus.fna"))
         .arg(dir.join("minus.fna"))
