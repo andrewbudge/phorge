@@ -1,11 +1,14 @@
-/target
+/build/
+/dist/
+/reference/
+/bench/
+/docs/
+/results/
+/mini_rust/
+/rust-legacy/target/
 
-# dirs to ignore
-/testdata
-/hept_test
-
-# Claude stuff
-CLAUDE.md
-
-# Claude Code agent worktrees and session state
-.claude/
+*.o
+*.a
+*.so
+*.tmp
+.DS_Store

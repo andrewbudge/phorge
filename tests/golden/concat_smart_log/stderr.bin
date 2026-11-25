@@ -1,0 +1,4 @@
+DNA, gene1.fa = 1-20
+DNA, gene2.fa = 21-40
+DNA, gene3.fa = 41-60
+Provenance log written to: /home/andrew-budge/code/phorge/bench/data/_out/prov.tsv

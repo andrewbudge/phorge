@@ -1,0 +1,6 @@
+error: the following required arguments were not provided:
+  --output_format <OUTPUT_FORMAT>
+
+Usage: phorge convert --output_format <OUTPUT_FORMAT> <INPUT_FILE>
+
+For more information, try '--help'.

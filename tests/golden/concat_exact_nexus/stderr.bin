@@ -1,0 +1,3 @@
+CHARSET gene1.fa = 1-20;
+CHARSET gene2.fa = 21-40;
+CHARSET gene3.fa = 41-60;

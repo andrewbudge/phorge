@@ -1,0 +1,5 @@
+Accession	Gene	Length_bp	Status	Filename
+NC_001700.1	12S	960	extracted	NC_001700.1_12S.fasta
+NC_001700.1	16S	1574	extracted	NC_001700.1_16S.fasta
+NC_001700.1	COI	1545	extracted	NC_001700.1_COI.fasta
+NC_001700.1	CYTB	1140	extracted	NC_001700.1_CYTB.fasta
