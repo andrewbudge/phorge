@@ -26,16 +26,16 @@ subcommands that need it.
 
 - [Install](#install)
 - [External dependencies](#external-dependencies)
-- **Subcommands:** [getheaders](#getheaders-ghd) · [stats](#stats) · [filter](#filter) · [convert](#convert) · [curate](#curate) · [concat](#concat-liger) · [coverage](#coverage) · [align](#align-aln) · [extract](#extract) · [unpack](#unpack) · [harvest](#harvest) · [report](#report) · [orthologs](#orthologs-groups) · [rip](#rip)
+- **Subcommands:** [getheaders](#getheaders-ghd) · [stats](#stats) · [filter](#filter) · [convert](#convert) · [curate](#curate) · [concat](#concat-liger) · [coverage](#coverage) · [align](#align-aln) · [extract](#extract) · [dump](#dump) · [unpack](#unpack) · [harvest](#harvest) · [report](#report) · [orthologs](#orthologs-groups) · [rip](#rip)
 
 ## Install
 
 From a release tarball:
 
 ```bash
-curl -LO https://github.com/andrewbudge/phorge/releases/download/v0.6.0/phorge-0.6.0-linux-x86_64.tar.gz
-tar -xzf phorge-0.6.0-linux-x86_64.tar.gz
-cp phorge-0.6.0-linux-x86_64/bin/phorge ~/.local/bin/
+curl -LO https://github.com/andrewbudge/phorge/releases/download/v0.7.0/phorge-0.7.0-linux-x86_64.tar.gz
+tar -xzf phorge-0.7.0-linux-x86_64.tar.gz
+cp phorge-0.7.0-linux-x86_64/bin/phorge ~/.local/bin/
 ```
 
 Release assets are built for Linux x86_64, macOS x86_64 and macOS arm64.
@@ -59,6 +59,7 @@ Most subcommands are fully self-contained. A few orchestrate external programs:
 | Subcommand | Requires |
 |---|---|
 | `extract` | [MMseqs2](https://github.com/soedinglab/MMseqs2) on PATH |
+| `dump` | `curl` on PATH; optional `NCBI_API_KEY` environment variable |
 | `align` | [MAFFT](https://mafft.cbrc.jp/alignment/software/) or [MUSCLE](https://drive5.com/muscle/) on PATH |
 | `unpack`, `report`, `orthologs` | An NCBI Datasets zip, or an unpacked Datasets directory |
 | `rip` | Mitochondrial GenBank flat files (`.gb` / `.gbff`) |
@@ -174,6 +175,27 @@ hits are reverse-complemented into reference orientation.
 ```bash
 phorge extract --reference refs.fna -o genes/ targets/*.fa
 phorge extract --refs refs/ -o genes/ --flank 10 target.fa
+```
+
+### dump
+
+Fetch GenBank records through NCBI E-utilities (ESearch + batched EFetch) into
+one FASTA for `extract`, or one GenBank flat file for `rip`. Coarse filtering
+uses ordinary Entrez query terms; long queries can live in a text file
+(`--query-file` or `-q @file`, newlines become spaces). `--ids-out` runs
+ESearch only and writes the UID list (use `-` for stdout); `--dry-run` prints
+just the match count. A
+`FILE.dump.json` sidecar records the query and counts. An NCBI API key, if
+present, is read from `$NCBI_API_KEY` (3 requests/s without, 10/s with).
+
+```bash
+phorge dump -q 'Odonata[ORGN] AND COX1[GENE]' --ids-out ids.txt
+phorge dump -q 'Odonata[ORGN] AND COX1[GENE]' --ids-out - | wc -l
+phorge dump --query-file long-query.txt -o targets.fa   # or -q @long-query.txt
+phorge dump --ids ids.txt -o targets.fa
+phorge dump -q 'Odonata[ORGN] AND COX1[GENE]' -o targets.fa --limit 5000
+phorge dump -q 'txid6961[ORGN] AND 1000:20000[SLEN]' -o targets.fa
+phorge dump --ids uids.txt --format gb -o records.gb
 ```
 
 ### unpack

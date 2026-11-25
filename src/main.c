@@ -23,6 +23,7 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[1], "coverage")) return cmd_coverage(argc - 1, argv + 1);
     if (!strcmp(argv[1], "align") || !strcmp(argv[1], "aln")) return cmd_align(argc - 1, argv + 1);
     if (!strcmp(argv[1], "extract")) return cmd_extract(argc - 1, argv + 1);
+    if (!strcmp(argv[1], "dump")) return cmd_dump(argc - 1, argv + 1);
     if (!strcmp(argv[1], "unpack")) return cmd_unpack(argc - 1, argv + 1);
     if (!strcmp(argv[1], "harvest")) return cmd_harvest(argc - 1, argv + 1);
     if (!strcmp(argv[1], "report")) return cmd_report(argc - 1, argv + 1);

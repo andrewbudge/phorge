@@ -1,6 +1,6 @@
 #ifndef PHORGE_VERSION_H
 #define PHORGE_VERSION_H
 
-#define PHORGE_VERSION "0.6.0"
+#define PHORGE_VERSION "0.7.0"
 
 #endif /* PHORGE_VERSION_H */
