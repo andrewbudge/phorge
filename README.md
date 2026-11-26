@@ -1,20 +1,16 @@
-<div align="center">
-
-<img src="https://raw.githubusercontent.com/andrewbudge/phorge/main/docs/phorge-assets/phorge-mark-ember.svg" alt="phorge logo" width="200">
-
 # Phorge
 
 **A composable CLI toolkit for phylogenetics — from local sequence files to a supermatrix.**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-</div>
-
-Phorge is a single-binary toolkit for common steps in phylogenetic pipelines.
-Its subcommands replace ad-hoc chains of shell commands with small, independent
-tools that read files, write files, and compose in Unix pipelines. Sequence
-acquisition is left to NCBI Datasets and GenBank; Phorge takes the files those
-tools produce.
+Phorge is a single-binary toolkit for creating and manipulating phylogenetic
+datasets. Its subcommands replace ad-hoc chains of shell commands with small,
+independent tools that read files, write files, and compose in Unix pipelines.
+Sequence acquisition is left to NCBI Datasets and GenBank; Phorge takes the
+files those tools produce. The goal is an easy-to-use, efficient, lightweight
+tool: one binary that takes a phylogenetic dataset from raw sequences to a
+supermatrix.
 
 Every subcommand works on its own. A missing external tool affects only the
 subcommands that need it.
@@ -27,6 +23,7 @@ subcommands that need it.
 - [Install](#install)
 - [External dependencies](#external-dependencies)
 - **Subcommands:** [getheaders](#getheaders-ghd) · [stats](#stats) · [filter](#filter) · [convert](#convert) · [curate](#curate) · [concat](#concat-liger) · [coverage](#coverage) · [align](#align-aln) · [extract](#extract) · [dump](#dump) · [unpack](#unpack) · [harvest](#harvest) · [report](#report) · [orthologs](#orthologs-groups) · [rip](#rip)
+- [License](#license)
 
 ## Install
 
@@ -64,7 +61,7 @@ Most subcommands are fully self-contained. A few orchestrate external programs:
 | `unpack`, `report`, `orthologs` | An NCBI Datasets zip, or an unpacked Datasets directory |
 | `rip` | Mitochondrial GenBank flat files (`.gb` / `.gbff`) |
 
- Install the alignment/search tools with conda if you do not have them:
+Install the alignment/search tools with conda if you do not have them:
 
 ```bash
 conda install -c bioconda mmseqs2 mafft muscle
@@ -81,12 +78,12 @@ Extract FASTA headers in file order. `-u` keeps only unique headers. With no
 files, reads stdin.
 
 ```bash
-$ phorge getheaders alignment.fa
+phorge getheaders alignment.fa
 alpha first
 beta second
 alpha first
 
-$ phorge getheaders -u alignment.fa
+phorge getheaders -u alignment.fa
 alpha first
 beta second
 ```
@@ -97,9 +94,9 @@ Summarize one or more FASTA files: sequence count, length, DNA/AA type, GC%,
 missingness, and (for equal-length alignments) variable and informative sites.
 
 ```bash
-$ phorge stats alignment.fa
-$ phorge stats -d -p alignment.fa     # per-sequence rows, aligned columns
-$ phorge stats *.fa
+phorge stats alignment.fa
+phorge stats -d -p alignment.fa     # per-sequence rows, aligned columns
+phorge stats *.fa
 ```
 
 ### filter
@@ -186,7 +183,7 @@ uses ordinary Entrez query terms; long queries can live in a text file
 ESearch only and writes the UID list (use `-` for stdout); `--dry-run` prints
 just the match count. A
 `FILE.dump.json` sidecar records the query and counts. An NCBI API key, if
-present, is read from `$NCBI_API_KEY` (3 requests/s without, 10/s with).
+present, is read from `$NCBI_API_KEY` (3 requests/s without a key, 10/s with one).
 
 ```bash
 phorge dump -q 'Odonata[ORGN] AND COX1[GENE]' --ids-out ids.txt
