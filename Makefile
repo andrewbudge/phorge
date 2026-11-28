@@ -76,6 +76,7 @@ test-datasets: $(BUILD)/phorge
 
 test-rip: $(BUILD)/phorge
 	python3 bench/seqripper_test.py --c ./$(BUILD)/phorge
+	python3 tests/rip_aggregate_test.py --c ./$(BUILD)/phorge
 
 valgrind: $(BUILD)/phorge $(BUILD)/test_c_plain test-datasets
 	VALGRIND="$(VALGRIND)" VALGRIND_FLAGS="$(VALGRIND_FLAGS)" \

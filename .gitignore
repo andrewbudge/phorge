@@ -4,6 +4,7 @@
 /bench/
 /docs/
 /results/
+/tests/_out/
 /mini_rust/
 /rust-legacy/target/
 

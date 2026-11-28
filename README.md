@@ -30,9 +30,9 @@ subcommands that need it.
 From a release tarball:
 
 ```bash
-curl -LO https://github.com/andrewbudge/phorge/releases/download/v0.7.0/phorge-0.7.0-linux-x86_64.tar.gz
-tar -xzf phorge-0.7.0-linux-x86_64.tar.gz
-cp phorge-0.7.0-linux-x86_64/bin/phorge ~/.local/bin/
+curl -LO https://github.com/andrewbudge/phorge/releases/download/v0.8.0/phorge-0.8.0-linux-x86_64.tar.gz
+tar -xzf phorge-0.8.0-linux-x86_64.tar.gz
+cp phorge-0.8.0-linux-x86_64/bin/phorge ~/.local/bin/
 ```
 
 Release assets are built for Linux x86_64, macOS x86_64 and macOS arm64.
@@ -241,12 +241,23 @@ phorge orthologs ncbi_dataset.zip -o genes/ --keep-all --id taxid
 Extract selected loci from mitochondrial GenBank genomes. This tool is
 specific to mitochondrial annotations and does not locate loci in general
 GenBank files. Handles common mt gene synonyms, `complement()`/`join()`
-locations, and minus-strand correction. Writes one FASTA per gene plus a TSV
-log.
+locations, and minus-strand correction. Writes one FASTA per gene per genome
+plus a TSV log.
 
 ```bash
 phorge rip -g COI,CYTB,12S,16S -o loci/ mitogenomes/*.gb
 phorge rip --all --no-trna -o loci/ mitogenomes/*.gb
+```
+
+Use `-a/--aggregate` to write one multi-FASTA per gene instead, keyed by the
+canonical mt gene name. Annotations such as `COI`/`COX1`/`cox1` or
+`12S_ribosomal_RNA`/`rrn12`/`s-rRNA` collapse into the same file, and duplicate
+`gene`/`CDS` features for one genome are reduced to one sequence (CDS
+preferred, then longest).
+
+```bash
+phorge rip -g COI,CYTB,12S,16S --aggregate -o loci/ mitogenomes/*.gb
+phorge rip --all --no-trna --aggregate -o loci/ mitogenomes/*.gb
 ```
 
 ## License

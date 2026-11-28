@@ -349,14 +349,24 @@ typedef struct {
     size_t cap;
 } Targets;
 
-static const char *const SYN_12S[] = {"12S", "12S rRNA", "s-rRNA", "12S ribosomal RNA", "rrnS"};
-static const char *const SYN_16S[] = {"16S", "16S rRNA", "l-rRNA", "16S ribosomal RNA", "rrnL"};
+static const char *const SYN_12S[] = {"12S", "12S rRNA", "s-rRNA", "12S ribosomal RNA", "rrnS",
+                                      "rrn12", "small subunit ribosomal RNA",
+                                      "12S_ribosomal_RNA", "small_subunit_ribosomal_RNA"};
+static const char *const SYN_16S[] = {"16S", "16S rRNA", "l-rRNA", "16S ribosomal RNA", "rrnL",
+                                      "rrn16", "large subunit ribosomal RNA",
+                                      "16S_ribosomal_RNA", "large_subunit_ribosomal_RNA"};
 static const char *const SYN_COI[] = {"COI", "COXI", "COX1", "CO1", "cytochrome oxidase subunit 1",
-                                      "cytochrome c oxidase subunit I", "cytochrome oxidase subunit I"};
+                                      "cytochrome c oxidase subunit I", "cytochrome oxidase subunit I",
+                                      "cytochrome c oxidase subunit 1"};
 static const char *const SYN_COII[] = {"COII", "COXII", "COX2", "CO2", "cytochrome oxidase subunit 2",
-                                       "cytochrome c oxidase subunit II"};
-static const char *const SYN_COIII[] = {"COIII", "COXIII", "COX3", "CO3", "cytochrome oxidase subunit 3"};
-static const char *const SYN_CYTB[] = {"CYTB", "Cyt b", "cytochrome b", "cob", "CYB"};
+                                       "cytochrome c oxidase subunit II",
+                                       "cytochrome c oxidase subunit 2"};
+static const char *const SYN_COIII[] = {"COIII", "COXIII", "COX3", "CO3", "cytochrome oxidase subunit 3",
+                                        "cytochrome c oxidase subunit III",
+                                        "cytochrome oxidase subunit III",
+                                        "cytochrome c oxidase subunit 3"};
+static const char *const SYN_CYTB[] = {"CYTB", "Cyt b", "cytochrome b", "cob", "CYB",
+                                      "cyt_b", "cytochrome_b"};
 static const char *const SYN_ND1[] = {"ND1", "NAD1", "NADH1", "NADH dehydrogenase subunit 1"};
 static const char *const SYN_ND2[] = {"ND2", "NAD2", "NADH2", "NADH dehydrogenase subunit 2"};
 static const char *const SYN_ND3[] = {"ND3", "NAD3", "NADH3", "NADH dehydrogenase subunit 3"};
@@ -443,9 +453,22 @@ static void parse_targets(const char *genes, Targets *out) {
     free(copy);
 }
 
-static bool contains_ci(const char *haystack, const char *needle) {
+static bool is_word_char(unsigned char c) {
+    return isalnum(c) || c == '_';
+}
+
+/* Substring match with word boundaries: "subunit III" must not match "subunit I". */
+static bool contains_gene_ci(const char *haystack, const char *needle) {
     char *h = ascii_lower(haystack), *n = ascii_lower(needle);
-    bool found = strstr(h, n) != NULL;
+    size_t hn = strlen(h), nn = strlen(n);
+    bool found = false;
+    for (size_t i = 0; i + nn <= hn; i++) {
+        if (strncmp(h + i, n, nn)) continue;
+        if (i && is_word_char((unsigned char)h[i - 1])) continue;
+        if (i + nn < hn && is_word_char((unsigned char)h[i + nn])) continue;
+        found = true;
+        break;
+    }
     free(h);
     free(n);
     return found;
@@ -463,12 +486,29 @@ static const char *match_gene(const char *annotation, const Targets *targets) {
     if (!result)
         for (size_t i = 0; i < targets->len && !result; i++)
             for (size_t j = 0; j < targets->data[i].nsyns; j++)
-                if (contains_ci(ann, targets->data[i].syns[j])) {
+                if (contains_gene_ci(ann, targets->data[i].syns[j])) {
                     result = targets->data[i].name;
                     break;
                 }
     free(ann);
     return result;
+}
+
+static void build_canonical_targets(Targets *out) {
+    for (size_t i = 0; i < sizeof(SYNONYMS) / sizeof(*SYNONYMS); i++) {
+        Target t = {0};
+        t.name = xstrdup(SYNONYMS[i].name);
+        t.nsyns = SYNONYMS[i].n;
+        t.syns = xmalloc(t.nsyns * sizeof(*t.syns));
+        for (size_t j = 0; j < t.nsyns; j++) t.syns[j] = xstrdup(SYNONYMS[i].syns[j]);
+        target_push(out, t);
+    }
+}
+
+static bool target_index(const Targets *targets, const char *name, size_t *idx) {
+    for (size_t i = 0; i < targets->len; i++)
+        if (!strcmp(targets->data[i].name, name)) { *idx = i; return true; }
+    return false;
 }
 
 static char *clean_name(const char *s) {
@@ -581,9 +621,7 @@ static int cmp_result(const void *a, const void *b) {
     return c ? c : strcmp(x->gene, y->gene);
 }
 
-static void write_fasta(const char *path, const char *header, const char *seq) {
-    FILE *f = fopen(path, "wb");
-    if (!f) xdie("Could not create %s: %s", path, strerror(errno));
+static void append_fasta(FILE *f, const char *header, const char *seq) {
     fprintf(f, ">%s\n", header);
     size_t len = strlen(seq);
     for (size_t i = 0; i < len; i += 60) {
@@ -591,12 +629,104 @@ static void write_fasta(const char *path, const char *header, const char *seq) {
         fwrite(seq + i, 1, n, f);
         fputc('\n', f);
     }
+}
+
+static void write_fasta(const char *path, const char *header, const char *seq) {
+    FILE *f = fopen(path, "wb");
+    if (!f) xdie("Could not create %s: %s", path, strerror(errno));
+    append_fasta(f, header, seq);
     fclose(f);
+}
+
+typedef struct {
+    char *gene;
+    char *seq;
+    char *loc;
+    char *header;
+    bool cds;
+    bool used;
+} Hit;
+
+typedef struct {
+    Hit *data;
+    size_t len;
+    size_t cap;
+} Hits;
+
+static void hit_push(Hits *list, char *gene, char *seq, char *loc, char *header, bool cds) {
+    if (list->len == list->cap) {
+        size_t cap = list->cap ? list->cap * 2 : 16;
+        Hit *p = realloc(list->data, cap * sizeof(*p));
+        if (!p) xdie("out of memory");
+        list->data = p;
+        list->cap = cap;
+    }
+    Hit h = {gene, seq, loc, header, cds, false};
+    list->data[list->len++] = h;
+}
+
+static void hits_free(Hits *list) {
+    for (size_t i = 0; i < list->len; i++) {
+        free(list->data[i].gene);
+        free(list->data[i].seq);
+        free(list->data[i].loc);
+        free(list->data[i].header);
+    }
+    free(list->data);
+    list->data = NULL;
+    list->len = list->cap = 0;
+}
+
+typedef struct {
+    char *name;
+    FILE *f;
+} GeneOut;
+
+typedef struct {
+    GeneOut *data;
+    size_t len;
+    size_t cap;
+} GeneOuts;
+
+static FILE *gene_out(GeneOuts *outs, const char *outdir, const char *gene) {
+    for (size_t i = 0; i < outs->len; i++)
+        if (!strcmp(outs->data[i].name, gene)) return outs->data[i].f;
+    if (outs->len == outs->cap) {
+        size_t cap = outs->cap ? outs->cap * 2 : 16;
+        GeneOut *p = realloc(outs->data, cap * sizeof(*p));
+        if (!p) xdie("out of memory");
+        outs->data = p;
+        outs->cap = cap;
+    }
+    char *name = xstrdup(gene);
+    size_t file_len = strlen(gene) + sizeof(".fasta");
+    char *file = xmalloc(file_len);
+    snprintf(file, file_len, "%s.fasta", gene);
+    char *path = cli_join_path(outdir, file);
+    FILE *f = fopen(path, "wb");
+    if (!f) xdie("Could not create %s: %s", path, strerror(errno));
+    free(path);
+    free(file);
+    outs->data[outs->len].name = name;
+    outs->data[outs->len].f = f;
+    outs->len++;
+    return f;
+}
+
+static void gene_outs_close(GeneOuts *outs) {
+    for (size_t i = 0; i < outs->len; i++) {
+        if (fclose(outs->data[i].f) != 0) xdie("Could not close %s.fasta", outs->data[i].name);
+        free(outs->data[i].name);
+    }
+    free(outs->data);
+    outs->data = NULL;
+    outs->len = outs->cap = 0;
 }
 
 int cmd_rip(int argc, char **argv) {
     const char *genes_arg = NULL, *outdir = NULL;
-    bool extract_all = false, skip_trna = false, verbose = false, quiet = false;
+    bool extract_all = false, skip_trna = false, aggregate = false;
+    bool verbose = false, quiet = false;
 
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i];
@@ -604,6 +734,8 @@ int cmd_rip(int argc, char **argv) {
         else if (!strncmp(a, "--genes=", 8)) genes_arg = a + 8;
         else if (!strcmp(a, "--all")) extract_all = true;
         else if (!strcmp(a, "--no-trna")) skip_trna = true;
+        else if (!strcmp(a, "-a") || !strcmp(a, "--aggregate"))
+            aggregate = true;
         else if (!strcmp(a, "-o") || !strcmp(a, "--output")) outdir = next_value(argc, argv, &i);
         else if (!strncmp(a, "--output=", 9)) outdir = a + 9;
         else if (!strcmp(a, "-v") || !strcmp(a, "--verbose")) verbose = true;
@@ -620,8 +752,11 @@ int cmd_rip(int argc, char **argv) {
 
     Targets targets = {0};
     if (genes_arg) parse_targets(genes_arg, &targets);
+    Targets canonical = {0};
+    if (aggregate) build_canonical_targets(&canonical);
     if (mkdir_p(outdir) != 0) xdie("Could not create %s", outdir);
 
+    GeneOuts outs = {0};
     NameCount *used = NULL;
     size_t nused = 0, ucap = 0;
     Results results = {0};
@@ -648,45 +783,108 @@ int cmd_rip(int argc, char **argv) {
             if (verbose) fprintf(stderr, "  Processing: %s (%s)\n", rec->accession, rec->organism);
             bool *found = calloc(targets.len ? targets.len : 1, sizeof(*found));
 
-            for (size_t fi = 0; fi < rec->nfeatures; fi++) {
-                Feature *f = &rec->features[fi];
-                const char *name = f->gene ? f->gene : f->product;
-                if (!name) continue;
-                if (skip_trna && is_trna(f, name)) continue;
+            if (aggregate) {
+                Hits hits = {0};
+                for (size_t fi = 0; fi < rec->nfeatures; fi++) {
+                    Feature *f = &rec->features[fi];
+                    const char *name = f->gene ? f->gene : f->product;
+                    if (!name) continue;
+                    if (skip_trna && is_trna(f, name)) continue;
 
-                char *target_name = NULL;
-                size_t target_idx = 0;
-                if (extract_all) {
-                    target_name = clean_name(name);
-                } else {
-                    const char *m = match_gene(name, &targets);
-                    if (!m) continue;
-                    target_name = xstrdup(m);
-                    for (size_t t = 0; t < targets.len; t++)
-                        if (!strcmp(targets.data[t].name, m)) { target_idx = t; break; }
-                    if (found[target_idx]) { free(target_name); continue; }
+                    const char *m = match_gene(name, &canonical);
+                    char *gene;
+                    if (m) gene = xstrdup(m);
+                    else if (genes_arg) {
+                        const char *um = match_gene(name, &targets);
+                        gene = um ? xstrdup(um) : clean_name(name);
+                    } else gene = clean_name(name);
+
+                    size_t t = 0;
+                    if (genes_arg && !target_index(&targets, gene, &t)) {
+                        free(gene);
+                        continue;
+                    }
+                    char *seq = extract_sequence(rec, f);
+                    if (!seq || !*seq) { free(seq); free(gene); continue; }
+                    char *loc = location_string(f);
+                    char *header = xmalloc(strlen(rec->accession) + strlen(loc) +
+                                           strlen(rec->organism) + strlen(gene) + 16);
+                    sprintf(header, "%s:%s %s [gene=%s]", rec->accession, loc,
+                            rec->organism, gene);
+                    hit_push(&hits, gene, seq, loc, header, !strcmp(f->type, "CDS"));
                 }
 
-                char *seq = extract_sequence(rec, f);
-                if (!seq || !*seq) { free(seq); free(target_name); continue; }
+                for (size_t hi = 0; hi < hits.len; hi++) {
+                    Hit *h = &hits.data[hi];
+                    if (h->used) continue;
+                    size_t best = hi;
+                    for (size_t hj = hi + 1; hj < hits.len; hj++) {
+                        Hit *c = &hits.data[hj];
+                        if (c->used || strcmp(c->gene, h->gene)) continue;
+                        if ((c->cds && !hits.data[best].cds) ||
+                            (c->cds == hits.data[best].cds &&
+                             strlen(c->seq) > strlen(hits.data[best].seq)))
+                            best = hj;
+                    }
+                    for (size_t hj = hi; hj < hits.len; hj++) {
+                        Hit *c = &hits.data[hj];
+                        if (!strcmp(c->gene, h->gene)) c->used = true;
+                    }
+                    Hit *w = &hits.data[best];
+                    size_t flen = strlen(w->gene) + sizeof(".fasta");
+                    char *filename = xmalloc(flen);
+                    snprintf(filename, flen, "%s.fasta", w->gene);
+                    append_fasta(gene_out(&outs, outdir, w->gene), w->header, w->seq);
+                    result_push(&results, rec->accession, w->gene, strlen(w->seq),
+                                "extracted", filename);
+                    size_t t = 0;
+                    if (genes_arg && target_index(&targets, w->gene, &t)) found[t] = true;
+                    if (verbose) fprintf(stderr, "    %s -> %s (%zu bp)\n",
+                                         w->gene, filename, strlen(w->seq));
+                    free(filename);
+                }
+                hits_free(&hits);
+            } else {
+                for (size_t fi = 0; fi < rec->nfeatures; fi++) {
+                    Feature *f = &rec->features[fi];
+                    const char *name = f->gene ? f->gene : f->product;
+                    if (!name) continue;
+                    if (skip_trna && is_trna(f, name)) continue;
 
-                char *base = xmalloc(strlen(rec->accession) + strlen(target_name) + 8);
-                sprintf(base, "%s_%s.fasta", rec->accession, target_name);
-                char *filename = unique_filename(&used, &nused, &ucap, base);
-                free(base);
-                char *path_out = cli_join_path(outdir, filename);
-                char *loc = location_string(f);
-                char *header = xmalloc(strlen(rec->accession) + strlen(loc) +
-                                       strlen(rec->organism) + strlen(target_name) + 16);
-                sprintf(header, "%s:%s %s [gene=%s]", rec->accession, loc,
-                        rec->organism, target_name);
-                write_fasta(path_out, header, seq);
-                result_push(&results, rec->accession, target_name, strlen(seq),
-                            "extracted", filename);
-                if (verbose) fprintf(stderr, "    %s -> %s (%zu bp)\n", target_name, filename, strlen(seq));
-                if (!extract_all) found[target_idx] = true;
-                free(header); free(loc); free(path_out); free(filename);
-                free(seq); free(target_name);
+                    char *target_name = NULL;
+                    size_t target_idx = 0;
+                    if (extract_all) {
+                        target_name = clean_name(name);
+                    } else {
+                        const char *m = match_gene(name, &targets);
+                        if (!m) continue;
+                        target_name = xstrdup(m);
+                        for (size_t t = 0; t < targets.len; t++)
+                            if (!strcmp(targets.data[t].name, m)) { target_idx = t; break; }
+                        if (found[target_idx]) { free(target_name); continue; }
+                    }
+
+                    char *seq = extract_sequence(rec, f);
+                    if (!seq || !*seq) { free(seq); free(target_name); continue; }
+
+                    char *base = xmalloc(strlen(rec->accession) + strlen(target_name) + 8);
+                    sprintf(base, "%s_%s.fasta", rec->accession, target_name);
+                    char *filename = unique_filename(&used, &nused, &ucap, base);
+                    free(base);
+                    char *path_out = cli_join_path(outdir, filename);
+                    char *loc = location_string(f);
+                    char *header = xmalloc(strlen(rec->accession) + strlen(loc) +
+                                           strlen(rec->organism) + strlen(target_name) + 16);
+                    sprintf(header, "%s:%s %s [gene=%s]", rec->accession, loc,
+                            rec->organism, target_name);
+                    write_fasta(path_out, header, seq);
+                    result_push(&results, rec->accession, target_name, strlen(seq),
+                                "extracted", filename);
+                    if (verbose) fprintf(stderr, "    %s -> %s (%zu bp)\n", target_name, filename, strlen(seq));
+                    if (!extract_all) found[target_idx] = true;
+                    free(header); free(loc); free(path_out); free(filename);
+                    free(seq); free(target_name);
+                }
             }
 
             if (!extract_all) {
@@ -700,6 +898,7 @@ int cmd_rip(int argc, char **argv) {
         for (size_t r = 0; r < nrecords; r++) record_free(&records[r]);
         free(records);
     }
+    gene_outs_close(&outs);
 
     qsort(results.data, results.len, sizeof(*results.data), cmp_result);
     char *log_path = cli_join_path(outdir, "seqripper_log.tsv");
@@ -737,5 +936,11 @@ int cmd_rip(int argc, char **argv) {
         free(targets.data[i].syns);
     }
     free(targets.data);
+    for (size_t i = 0; i < canonical.len; i++) {
+        free(canonical.data[i].name);
+        for (size_t j = 0; j < canonical.data[i].nsyns; j++) free(canonical.data[i].syns[j]);
+        free(canonical.data[i].syns);
+    }
+    free(canonical.data);
     return 0;
 }
